@@ -39,9 +39,14 @@ interface IncomeMetrics {
 interface RetentionMetrics {
   anp13: number; count13: number; anp25: number; count25: number
 }
-interface TrendData {
+interface RrTrendData {
   months: string[]
-  values: number[]
+  rrValues: number[]
+  target: number
+}
+interface IncomeTrendData {
+  months: string[]
+  incomeValues: number[]
   target: number
 }
 interface ActivityData {
@@ -125,8 +130,8 @@ export default function App() {
   const [rrMetrics, setRrMetrics] = useState<RrMetrics | null>(null)
   const [incomeMetrics, setIncomeMetrics] = useState<IncomeMetrics | null>(null)
   const [retentionMetrics, setRetentionMetrics] = useState<RetentionMetrics | null>(null)
-  const [rrTrend, setRrTrend] = useState<TrendData | null>(null)
-  const [incomeTrend, setIncomeTrend] = useState<TrendData | null>(null)
+  const [rrTrend, setRrTrend] = useState<RrTrendData | null>(null)
+  const [incomeTrend, setIncomeTrend] = useState<IncomeTrendData | null>(null)
   const [activity, setActivity] = useState<ActivityData | null>(null)
   const [newCustomer, setNewCustomer] = useState<NewCustomerData | null>(null)
   const [oldCustomerSummary, setOldCustomerSummary] = useState<OldCustomerSummary | null>(null)
@@ -165,8 +170,8 @@ export default function App() {
       setRrMetrics(rr)
       setIncomeMetrics(income)
       setRetentionMetrics(retention)
-      setRrTrend({ months: rrTr.months, values: rrTr.rrValues, target: rrTr.target })
-      setIncomeTrend({ months: incomeTr.months, values: incomeTr.incomeValues, target: incomeTr.target })
+      setRrTrend({ months: rrTr.months, rrValues: rrTr.rrValues, target: rrTr.target })
+      setIncomeTrend({ months: incomeTr.months, incomeValues: incomeTr.incomeValues, target: incomeTr.target })
       setActivity(act)
       setNewCustomer(newCust)
       setOldCustomerSummary(oldSum)
@@ -221,19 +226,39 @@ export default function App() {
   const currentWfp = currentFm?.wfps?.find(w=>w.id === currentSelection.wfpId);
   const title = currentWfp ? `${currentFm?.name} 团队业绩诊断：${currentWfp.name} 业绩诊断` : `${currentFm?.name} 团队业绩诊断`;
 
-  // 图表数据
-  const chartData = (rrTrend?.months || []).map((m, i) => ({
-    name: m,
-    rr: rrTrend?.values[i] || 0,
-    income: incomeTrend?.values[i] || 0,
-    target: rrTrend?.target || 50000,
-    // RR指标堆叠柱状图数据（首年FYC + 续保 + 基金）
-    fyc: Math.round((rrTrend?.values[i] || 0) * 0.45),
-    renewal: Math.round((rrTrend?.values[i] || 0) * 0.35),
-    fund: Math.round((rrTrend?.values[i] || 0) * 0.20),
-    // 完成率（RR / 目标 * 100）
-    completionRate: Math.round(((rrTrend?.values[i] || 0) / (rrTrend?.target || 50000)) * 100)
-  }));
+  // RR指标趋势图表数据（堆叠柱状图 + 完成率折线）
+  const rrChartData = (rrTrend?.months || []).map((m, i) => {
+    const rrVal = rrTrend?.rrValues?.[i] || 0;
+    const rrTarget = rrTrend?.target || 50000;
+    return {
+      name: m,
+      rr: rrVal,
+      target: rrTarget,
+      // 堆叠柱状图数据（首年FYC + 续保 + 基金）
+      fyc: Math.round(rrVal * 0.45),
+      renewal: Math.round(rrVal * 0.35),
+      fund: Math.round(rrVal * 0.20),
+      // 完成率（RR / 目标 * 100）
+      completionRate: Math.round((rrVal / rrTarget) * 100)
+    };
+  });
+
+  // 收入指标趋势图表数据（堆叠柱状图 + 完成率折线）
+  const incomeChartData = (incomeTrend?.months || []).map((m, i) => {
+    const incVal = incomeTrend?.incomeValues?.[i] || 0;
+    const incTarget = incomeTrend?.target || 50000;
+    return {
+      name: m,
+      income: incVal,
+      target: incTarget,
+      // 堆叠柱状图数据（首年FYC + 续保 + 基金）
+      fyc: Math.round(incVal * 0.45),
+      renewal: Math.round(incVal * 0.35),
+      fund: Math.round(incVal * 0.20),
+      // 完成率（收入 / 目标 * 100）
+      completionRate: Math.round((incVal / incTarget) * 100)
+    };
+  });
 
   return (
     <>
@@ -409,7 +434,7 @@ export default function App() {
                   },
                   xAxis: {
                     type: 'category',
-                    data: chartData.map(d => d.name),
+                    data: incomeChartData.map(d => d.name),
                     axisLine: { lineStyle: { color: '#ccc' } },
                     axisLabel: { color: '#666' }
                   },
@@ -434,7 +459,7 @@ export default function App() {
                       name: '首年FYC',
                       type: 'bar',
                       stack: 'rr',
-                      data: chartData.map(d => d.fyc),
+                      data: incomeChartData.map(d => d.fyc),
                       itemStyle: { color: '#d51e27' },
                       barWidth: '40%'
                     },
@@ -442,21 +467,21 @@ export default function App() {
                       name: '续保',
                       type: 'bar',
                       stack: 'rr',
-                      data: chartData.map(d => d.renewal),
+                      data: incomeChartData.map(d => d.renewal),
                       itemStyle: { color: '#c5a055' }
                     },
                     {
                       name: '基金',
                       type: 'bar',
                       stack: 'rr',
-                      data: chartData.map(d => d.fund),
+                      data: incomeChartData.map(d => d.fund),
                       itemStyle: { color: '#e8dcc8', borderRadius: [4, 4, 0, 0] }
                     },
                     {
                       name: '完成率',
                       type: 'line',
                       yAxisIndex: 1,
-                      data: chartData.map(d => d.completionRate),
+                      data: incomeChartData.map(d => d.completionRate),
                       smooth: true,
                       lineStyle: { color: '#d51e27', width: 2 },
                       itemStyle: { color: '#d51e27' },
@@ -501,7 +526,7 @@ export default function App() {
                   },
                   xAxis: {
                     type: 'category',
-                    data: chartData.map(d => d.name),
+                    data: incomeChartData.map(d => d.name),
                     axisLine: { lineStyle: { color: '#ccc' } },
                     axisLabel: { color: '#666' }
                   },
@@ -526,7 +551,7 @@ export default function App() {
                       name: '首年FYC',
                       type: 'bar',
                       stack: 'income',
-                      data: chartData.map(d => d.fyc),
+                      data: incomeChartData.map(d => d.fyc),
                       itemStyle: { color: '#d51e27' },
                       barWidth: '40%'
                     },
@@ -534,21 +559,21 @@ export default function App() {
                       name: '续保',
                       type: 'bar',
                       stack: 'income',
-                      data: chartData.map(d => d.renewal),
+                      data: incomeChartData.map(d => d.renewal),
                       itemStyle: { color: '#c5a055' }
                     },
                     {
                       name: '基金',
                       type: 'bar',
                       stack: 'income',
-                      data: chartData.map(d => d.fund),
+                      data: incomeChartData.map(d => d.fund),
                       itemStyle: { color: '#e8dcc8', borderRadius: [4, 4, 0, 0] }
                     },
                     {
                       name: '完成率',
                       type: 'line',
                       yAxisIndex: 1,
-                      data: chartData.map(d => d.completionRate),
+                      data: incomeChartData.map(d => d.completionRate),
                       smooth: true,
                       lineStyle: { color: '#d51e27', width: 2 },
                       itemStyle: { color: '#d51e27' },
