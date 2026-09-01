@@ -6,3 +6,4 @@ src/.umi-production/
 .DS_Store
 *.log
 npm-debug.log*
+*.tsbuildinfo
