@@ -5,12 +5,7 @@ export default defineConfig({
     { path: '/', component: '@/pages/index' },
   ],
   npmClient: 'npm',
-  proxy: {
-    '/api': {
-      target: 'http://localhost:5000',
-      changeOrigin: true,
-    },
-  },
+  mock: {},
   headScripts: [
     { content: `window.routerBase = '/';` },
   ],
