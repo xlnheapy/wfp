@@ -1,4 +1,17 @@
-// API 服务层 - 调用后端接口
+// API 服务层 - 根据环境自动切换数据源
+// 开发环境：使用 Mock 数据（通过 Umi mock）
+// 生产环境：对接 Qlik Sense
+
+// 判断是否为生产环境
+const isProduction = process.env.NODE_ENV === 'production';
+
+// 生产环境使用 Qlik 服务
+let qlikService: any = null;
+if (isProduction) {
+  import('./qlik-service').then(module => {
+    qlikService = module;
+  });
+}
 
 const BASE_URL = '/api'
 
@@ -18,6 +31,17 @@ function buildQueryString(params: QueryParams): string {
 }
 
 async function fetchApi<T>(endpoint: string, params: QueryParams = {}): Promise<T> {
+  // 生产环境使用 Qlik 服务
+  if (isProduction && qlikService) {
+    const methodName = endpoint.replace('/', '').replace(/-([a-z])/g, (g) => g[1].toUpperCase());
+    const capitalized = methodName.charAt(0).toUpperCase() + methodName.slice(1);
+    const method = qlikService[`fetch${capitalized}`];
+    if (method) {
+      return method(params);
+    }
+  }
+
+  // 开发环境使用 Mock 数据
   const url = `${BASE_URL}${endpoint}${buildQueryString(params)}`
   const res = await fetch(url)
   const json = await res.json()

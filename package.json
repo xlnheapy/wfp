@@ -15,6 +15,7 @@
     "dayjs": "^1.11.10",
     "echarts": "^5.5.0",
     "echarts-for-react": "^3.0.2",
+    "enigma.js": "^2.14.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "umi": "^4.3.0"

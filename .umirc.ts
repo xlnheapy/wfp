@@ -6,6 +6,10 @@ export default defineConfig({
   ],
   npmClient: 'npm',
   mock: {},
+  define: {
+    'process.env.UMI_APP_QLIK_URL': process.env.UMI_APP_QLIK_URL || '',
+    'process.env.UMI_APP_QLIK_APP_ID': process.env.UMI_APP_QLIK_APP_ID || '',
+  },
   headScripts: [
     { content: `window.routerBase = '/';` },
   ],
