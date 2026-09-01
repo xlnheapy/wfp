@@ -2,12 +2,12 @@
 // 开发环境：使用 Mock 数据（通过 Umi mock）
 // 生产环境：对接 Qlik Sense
 
-// 判断是否为生产环境
-const isProduction = process.env.NODE_ENV === 'production';
+// 判断是否为开发环境
+const isDevelopment = process.env.NODE_ENV === 'development';
 
-// 生产环境使用 Qlik 服务
+// 非开发环境使用 Qlik 服务
 let qlikService: any = null;
-if (isProduction) {
+if (!isDevelopment) {
   import('./qlik-service').then(module => {
     qlikService = module;
   });
