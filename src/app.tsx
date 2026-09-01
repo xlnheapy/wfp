@@ -1,11 +1,6 @@
-import type { RunTimeLayoutConfig } from '@umijs/max';
-
-export const layout: RunTimeLayoutConfig = () => {
+// Umi runtime configuration
+export const layout = () => {
   return {
     title: 'WFP销售人员诊断中心',
-    logo: '/logo.svg',
-    menu: {
-      locale: false,
-    },
   };
 };
