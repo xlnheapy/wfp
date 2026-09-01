@@ -209,7 +209,13 @@ export default function App() {
     name: m,
     rr: data.trends.rrValues[i],
     income: data.trends.incomeValues[i],
-    target: data.trends.target
+    target: data.trends.target,
+    // RR指标堆叠柱状图数据（首年FYC + 续保 + 基金）
+    fyc: Math.round(data.trends.rrValues[i] * 0.45),
+    renewal: Math.round(data.trends.rrValues[i] * 0.35),
+    fund: Math.round(data.trends.rrValues[i] * 0.20),
+    // 完成率（RR / 目标 * 100）
+    completionRate: Math.round((data.trends.rrValues[i] / data.trends.target) * 100)
   }));
 
   return (
@@ -357,16 +363,30 @@ export default function App() {
                 option={{
                   tooltip: {
                     trigger: 'axis',
-                    axisPointer: { type: 'shadow' }
+                    axisPointer: { type: 'shadow' },
+                    formatter: (params: any[]) => {
+                      let result = `<div style="font-weight:600;margin-bottom:4px">${params[0].name}</div>`;
+                      let total = 0;
+                      params.forEach((p: any) => {
+                        if (p.seriesName === '完成率') {
+                          result += `<div>${p.marker} ${p.seriesName}: <b>${p.value}%</b></div>`;
+                        } else {
+                          result += `<div>${p.marker} ${p.seriesName}: <b>${p.value}</b></div>`;
+                          total += p.value;
+                        }
+                      });
+                      result += `<div style="border-top:1px solid #eee;margin-top:4px;padding-top:4px">合计: <b>${total}</b></div>`;
+                      return result;
+                    }
                   },
                   legend: {
-                    data: ['RR', '目标'],
+                    data: ['首年FYC', '续保', '基金', '完成率'],
                     bottom: 0
                   },
                   grid: {
                     left: '3%',
-                    right: '4%',
-                    bottom: '15%',
+                    right: '8%',
+                    bottom: '18%',
                     top: '10%',
                     containLabel: true
                   },
@@ -376,26 +396,55 @@ export default function App() {
                     axisLine: { lineStyle: { color: '#ccc' } },
                     axisLabel: { color: '#666' }
                   },
-                  yAxis: {
-                    type: 'value',
-                    axisLine: { show: false },
-                    splitLine: { lineStyle: { color: '#eee', type: 'dashed' } },
-                    axisLabel: { color: '#666' }
-                  },
+                  yAxis: [
+                    {
+                      type: 'value',
+                      name: '件数',
+                      axisLine: { show: false },
+                      splitLine: { lineStyle: { color: '#eee', type: 'dashed' } },
+                      axisLabel: { color: '#666' }
+                    },
+                    {
+                      type: 'value',
+                      name: '完成率',
+                      axisLine: { show: false },
+                      splitLine: { show: false },
+                      axisLabel: { color: '#666', formatter: '{value}%' }
+                    }
+                  ],
                   series: [
                     {
-                      name: 'RR',
+                      name: '首年FYC',
                       type: 'bar',
-                      data: chartData.map(d => d.rr),
-                      itemStyle: { color: '#d51e27', borderRadius: [4, 4, 0, 0] },
+                      stack: 'rr',
+                      data: chartData.map(d => d.fyc),
+                      itemStyle: { color: '#d51e27' },
                       barWidth: '40%'
                     },
                     {
-                      name: '目标',
+                      name: '续保',
                       type: 'bar',
-                      data: chartData.map(d => d.target),
-                      itemStyle: { color: '#c5a055', borderRadius: [4, 4, 0, 0] },
-                      barWidth: '40%'
+                      stack: 'rr',
+                      data: chartData.map(d => d.renewal),
+                      itemStyle: { color: '#c5a055' }
+                    },
+                    {
+                      name: '基金',
+                      type: 'bar',
+                      stack: 'rr',
+                      data: chartData.map(d => d.fund),
+                      itemStyle: { color: '#e8dcc8', borderRadius: [4, 4, 0, 0] }
+                    },
+                    {
+                      name: '完成率',
+                      type: 'line',
+                      yAxisIndex: 1,
+                      data: chartData.map(d => d.completionRate),
+                      smooth: true,
+                      lineStyle: { color: '#333', width: 2 },
+                      itemStyle: { color: '#333' },
+                      symbol: 'circle',
+                      symbolSize: 6
                     }
                   ]
                 }}
