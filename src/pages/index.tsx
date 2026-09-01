@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import ReactECharts from 'echarts-for-react'
+import '@/global/global.css'
 import {
   getFmWfpList,
   getRrMetrics,
