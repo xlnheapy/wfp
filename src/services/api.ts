@@ -31,8 +31,8 @@ function buildQueryString(params: QueryParams): string {
 }
 
 async function fetchApi<T>(endpoint: string, params: QueryParams = {}): Promise<T> {
-  // 生产环境使用 Qlik 服务
-  if (isProduction && qlikService) {
+  // 非开发环境使用 Qlik 服务
+  if (!isDevelopment && qlikService) {
     const methodName = endpoint.replace('/', '').replace(/-([a-z])/g, (g) => g[1].toUpperCase());
     const capitalized = methodName.charAt(0).toUpperCase() + methodName.slice(1);
     const method = qlikService[`fetch${capitalized}`];
