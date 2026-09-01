@@ -7,3 +7,6 @@ src/.umi-production/
 *.log
 npm-debug.log*
 *.tsbuildinfo
+
+# Preview files
+.preview
