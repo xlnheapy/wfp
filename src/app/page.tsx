@@ -1,134 +1,80 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import ReactECharts from 'echarts-for-react'
+import {
+  fetchFmWfpList,
+  fetchRrMetrics,
+  fetchIncomeMetrics,
+  fetchRetentionMetrics,
+  fetchRrTrend,
+  fetchIncomeTrend,
+  fetchActivity,
+  fetchNewCustomer,
+  fetchOldCustomerSummary,
+  fetchOldCustomerList,
+  fetchPolicySummary,
+  fetchPolicyList,
+  fetchFundSummary,
+  fetchFundList
+} from '@/services/api'
 
-// 原始mock数据
-const mockData = {
-  fms: [
-    {
-      id: "fm001",
-      name: "张经理 (FM)",
-      wfps: [
-        { id: "wfp001", name: "李销售 (WFP)" },
-        { id: "wfp002", name: "王销售 (WFP)" }
-      ]
-    },
-    {
-      id: "fm002",
-      name: "陈总监 (FM)",
-      wfps: [
-        { id: "wfp003", name: "赵销售 (WFP)" },
-        { id: "wfp004", name: "孙销售 (WFP)" }
-      ]
-    }
-  ]
+// FM/WFP 列表类型
+interface FmItem {
+  id: string
+  name: string
+  wfps: Array<{ id: string; name: string }>
 }
 
-// 生成模拟业务数据，完全复刻原始JS逻辑
-function generateData(timeFilter: string) {
-  const isQuarter = timeFilter.includes('quarter');
-  const months = isQuarter ? ['Q1','Q2','Q3','Q4'] : ['1月','2月','3月','4月','5月','6月'];
-
-  const rrTotal = Math.floor(Math.random() * 50000) + 40000;
-  const rrTarget = 50000;
-  const rrRate = (rrTotal / rrTarget) * 100;
-
-  const incomeTotal = rrTotal * 0.8;
-  const fyc = incomeTotal * 0.6;
-  const renewalComm = incomeTotal * 0.25;
-  const fundIncome = incomeTotal * 0.15;
-
-  const trendRR = months.map(() => Math.floor(Math.random() * 50000) + 30000);
-  const trendInc = months.map(() => Math.floor(Math.random() * 40000) + 25000);
-  const trendTarget = 50000;
-
-  return {
-    rr: {
-      total: rrTotal,
-      target: rrTarget,
-      rate: rrRate,
-      insuranceNew: Math.floor(rrTotal * 0.4),
-      insuranceRenew: Math.floor(rrTotal * 0.3),
-      fund: Math.floor(rrTotal * 0.3),
-      people70: Math.floor(Math.random() * 10) + 5
-    },
-    income: {
-      total: incomeTotal,
-      fyc,
-      fycShare: (fyc / incomeTotal * 100).toFixed(1),
-      renewal: renewalComm,
-      renewalShare: (renewalComm / incomeTotal * 100).toFixed(1),
-      fundInc: fundIncome,
-      fundShare: (fundIncome / incomeTotal * 100).toFixed(1)
-    },
-    retention: {
-      anp13: Math.floor(Math.random() * 30 + 60),
-      count13: Math.floor(Math.random() * 80),
-      anp25: Math.floor(Math.random() * 30 + 40),
-      count25: Math.floor(Math.random() * 40)
-    },
-    activity: {
-      calls: Math.floor(Math.random() * 200),
-      callsLong: Math.floor(Math.random() * 100),
-      meetings: Math.floor(Math.random() * 30),
-      newList: Math.floor(Math.random() * 20),
-      fundContacts: Math.floor(Math.random() * 50),
-      fundMeetings: Math.floor(Math.random() * 10),
-      wechatAdd: Math.floor(Math.random() * 40),
-      wechatInt: Math.floor(Math.random() * 60),
-      newClients: Math.floor(Math.random() * 8),
-      newAUM: Math.floor(Math.random() * 100000),
-      simplePolicies: Math.floor(Math.random() * 12),
-      complexPolicies: Math.floor(Math.random() * 5)
-    },
-    customerOps: {
-      new: {
-        events: { count: Math.floor(Math.random()*5), target:5, rate:(Math.random()*100).toFixed(1), mtdContact:(Math.random()*100).toFixed(1), mtdMeet:(Math.random()*100).toFixed(1) },
-        self: { count: Math.floor(Math.random()*10), target:8, rate:(Math.random()*100).toFixed(1), mtdContact:(Math.random()*100).toFixed(1), mtdMeet:(Math.random()*100).toFixed(1) }
-      },
-      old: {
-        total: Math.floor(Math.random()*200),
-        callList: Math.floor(Math.random()*100),
-        callListContactRate: (Math.random()*100).toFixed(1),
-        callListMeetRate: (Math.random()*100).toFixed(1),
-        table: [
-          {type:"Non-NHC Customer Top-up", count:18, target:50, mtdContact:"45%", mtdMeet:"18%", callList:10, callListContact:"50%", callListMeet:"20%"},
-          {type:"Non-NHC existing leads", count:50, target:80, mtdContact:"36%", mtdMeet:"18%", callList:30, callListContact:"40%", callListMeet:"16%"},
-          {type:"NHC", count:18, target:50, mtdContact:"48%", mtdMeet:"36%", callList:5, callListContact:"100%", callListMeet:"60%"}
-        ]
-      }
-    },
-    policyFund: {
-      policy: {
-        active: {count:128, aum:500000},
-        pendingRenew: {count:30, aum:150000},
-        orphan: {count:15, aum:90000},
-        table: [
-          {type:"已签待扣保单", count:5, policyCount:5, aum:50000, priority:"urgent", suggestion:"立即跟进扣款"},
-          {type:"本月待续期（逾期-66天）", count:10, policyCount:10, aum:120000, priority:"important", suggestion:"电话提醒续费"},
-          {type:"本月待续期（未逾期）", count:15, policyCount:15, aum:120000, priority:"normal", suggestion:"发送续费通知"},
-          {type:"近30天失效", count:5, policyCount:5, aum:30000, priority:"normal", suggestion:"尝试复效挽回"}
-        ]
-      },
-      fund: {
-        holding: {count:80, aum:2000000},
-        huikunbao: {count:40, aum:500000},
-        fundNoIns: {count:28, aum:300000},
-        table: [
-          {type:"赎回（在途）", count:3, orderCount:3, orderAmount:50000, priority:"urgent", suggestion:"确认到账"},
-          {type:"赎回（已确认）", count:5, orderCount:5, orderAmount:120000, priority:"important", suggestion:"资金再配置建议"},
-          {type:"申购（在途）", count:2, orderCount:2, orderAmount:30000, priority:"normal", suggestion:"确认份额"}
-        ]
-      }
-    },
-    trends: {
-      months,
-      rrValues: trendRR,
-      incomeValues: trendInc,
-      target: trendTarget
-    }
-  }
+// 数据类型
+interface RrMetrics {
+  total: number; target: number; rate: number
+  insuranceNew: number; insuranceRenew: number; fund: number; people70: number
+}
+interface IncomeMetrics {
+  total: number; fyc: number; fycShare: string
+  renewal: number; renewalShare: string
+  fundInc: number; fundShare: string
+}
+interface RetentionMetrics {
+  anp13: number; count13: number; anp25: number; count25: number
+}
+interface TrendData {
+  months: string[]
+  values: number[]
+  target: number
+}
+interface ActivityData {
+  calls: number; callsLong: number; meetings: number; newList: number
+  fundContacts: number; fundMeetings: number; wechatAdd: number; wechatInt: number
+  newClients: number; newAUM: number; simplePolicies: number; complexPolicies: number
+}
+interface NewCustomerData {
+  events: { count: number; target: number; rate: string; mtdContact: string; mtdMeet: string }
+  self: { count: number; target: number; rate: string; mtdContact: string; mtdMeet: string }
+}
+interface OldCustomerSummary {
+  total: number; callList: number; callListContactRate: string; callListMeetRate: string
+}
+interface OldCustomerRow {
+  type: string; count: number; target: number; mtdContact: string; mtdMeet: string
+  callList: number; callListContact: string; callListMeet: string
+}
+interface PolicySummary {
+  active: { count: number; aum: number }
+  pendingRenew: { count: number; aum: number }
+  orphan: { count: number; aum: number }
+}
+interface PolicyRow {
+  type: string; count: number; policyCount: number; aum: number; priority: string; suggestion: string
+}
+interface FundSummary {
+  holding: { count: number; aum: number }
+  huikunbao: { count: number; aum: number }
+  fundNoIns: { count: number; aum: number }
+}
+interface FundRow {
+  type: string; count: number; orderCount: number; orderAmount: number; priority: string; suggestion: string
 }
 
 // 优先级标签
@@ -139,7 +85,7 @@ function getPriorityLabel(p: string) {
 }
 
 // 活动表格行
-function generateActivityRows(activity: ReturnType<typeof generateData>['activity']) {
+function generateActivityRows(activity: ActivityData) {
   const items = [
     {name:"联系人数 (>0s)", target:150, val: activity.calls},
     {name:"有效联系 (>90s)", target:80, val: activity.callsLong},
@@ -170,20 +116,91 @@ function generateActivityRows(activity: ReturnType<typeof generateData>['activit
 }
 
 export default function App() {
+  const [fmList, setFmList] = useState<FmItem[]>([])
   const [currentSelection, setCurrentSelection] = useState({fmId:'fm001', wfpId:null as string | null});
   const [currentTimeFilter, setCurrentTimeFilter] = useState('current_month');
   const [currentChartType, setCurrentChartType] = useState('rr');
-  const [data, setData] = useState<ReturnType<typeof generateData> | null>(null);
 
-  // 初始化加载数据
-  useEffect(()=>{
-    const d = generateData(currentTimeFilter);
-    setData(d);
-  }, [currentTimeFilter]);
+  // 各模块数据状态
+  const [rrMetrics, setRrMetrics] = useState<RrMetrics | null>(null)
+  const [incomeMetrics, setIncomeMetrics] = useState<IncomeMetrics | null>(null)
+  const [retentionMetrics, setRetentionMetrics] = useState<RetentionMetrics | null>(null)
+  const [rrTrend, setRrTrend] = useState<TrendData | null>(null)
+  const [incomeTrend, setIncomeTrend] = useState<TrendData | null>(null)
+  const [activity, setActivity] = useState<ActivityData | null>(null)
+  const [newCustomer, setNewCustomer] = useState<NewCustomerData | null>(null)
+  const [oldCustomerSummary, setOldCustomerSummary] = useState<OldCustomerSummary | null>(null)
+  const [oldCustomerList, setOldCustomerList] = useState<OldCustomerRow[]>([])
+  const [policySummary, setPolicySummary] = useState<PolicySummary | null>(null)
+  const [policyList, setPolicyList] = useState<PolicyRow[]>([])
+  const [fundSummary, setFundSummary] = useState<FundSummary | null>(null)
+  const [fundList, setFundList] = useState<FundRow[]>([])
+
+  // 构建查询参数
+  const getQueryParams = useCallback(() => ({
+    fm_id: currentSelection.fmId,
+    wfp_id: currentSelection.wfpId || undefined,
+    time_filter: currentTimeFilter
+  }), [currentSelection.fmId, currentSelection.wfpId, currentTimeFilter])
+
+  // 加载所有数据
+  const loadAllData = useCallback(async () => {
+    const params = getQueryParams()
+    try {
+      const [rr, income, retention, rrTr, incomeTr, act, newCust, oldSum, oldLst, polSum, polLst, fndSum, fndLst] = await Promise.all([
+        fetchRrMetrics(params),
+        fetchIncomeMetrics(params),
+        fetchRetentionMetrics(params),
+        fetchRrTrend(params),
+        fetchIncomeTrend(params),
+        fetchActivity(params),
+        fetchNewCustomer(params),
+        fetchOldCustomerSummary(params),
+        fetchOldCustomerList(params),
+        fetchPolicySummary(params),
+        fetchPolicyList(params),
+        fetchFundSummary(params),
+        fetchFundList(params)
+      ])
+      setRrMetrics(rr)
+      setIncomeMetrics(income)
+      setRetentionMetrics(retention)
+      setRrTrend({ months: rrTr.months, values: rrTr.rrValues, target: rrTr.target })
+      setIncomeTrend({ months: incomeTr.months, values: incomeTr.incomeValues, target: incomeTr.target })
+      setActivity(act)
+      setNewCustomer(newCust)
+      setOldCustomerSummary(oldSum)
+      setOldCustomerList(oldLst.table)
+      setPolicySummary(polSum)
+      setPolicyList(polLst.table)
+      setFundSummary(fndSum)
+      setFundList(fndLst.table)
+    } catch (err) {
+      console.error('Failed to load data:', err)
+    }
+  }, [getQueryParams])
+
+  // 初始化加载 FM/WFP 列表
+  useEffect(() => {
+    fetchFmWfpList().then(data => {
+      setFmList(data.fms)
+      if (data.fms.length > 0) {
+        const firstWfp = data.fms[0].wfps?.[0]?.id || null
+        setCurrentSelection({ fmId: data.fms[0].id, wfpId: firstWfp })
+      }
+    })
+  }, [])
+
+  // 当选择条件变化时重新加载数据
+  useEffect(() => {
+    if (fmList.length > 0) {
+      loadAllData()
+    }
+  }, [fmList.length, loadAllData])
 
   // FM切换
   const handleFmChange = (fmId: string)=>{
-    const fm = mockData.fms.find(f=>f.id === fmId);
+    const fm = fmList.find(f=>f.id === fmId);
     const firstWfp = fm?.wfps?.[0]?.id || null;
     setCurrentSelection({fmId, wfpId:firstWfp});
   }
@@ -198,24 +215,24 @@ export default function App() {
     setCurrentTimeFilter(e.target.value);
   }
 
-  if(!data) return <div>Loading...</div>
+  if(!rrMetrics || !incomeMetrics || !retentionMetrics || !activity || !newCustomer || !oldCustomerSummary || !policySummary || !fundSummary) return <div>Loading...</div>
 
-  const currentFm = mockData.fms.find(f=>f.id === currentSelection.fmId);
+  const currentFm = fmList.find(f=>f.id === currentSelection.fmId);
   const currentWfp = currentFm?.wfps?.find(w=>w.id === currentSelection.wfpId);
   const title = currentWfp ? `${currentFm?.name} 团队业绩诊断：${currentWfp.name} 业绩诊断` : `${currentFm?.name} 团队业绩诊断`;
 
   // 图表数据
-  const chartData = data.trends.months.map((m,i)=>({
+  const chartData = (rrTrend?.months || []).map((m, i) => ({
     name: m,
-    rr: data.trends.rrValues[i],
-    income: data.trends.incomeValues[i],
-    target: data.trends.target,
+    rr: rrTrend?.values[i] || 0,
+    income: incomeTrend?.values[i] || 0,
+    target: rrTrend?.target || 50000,
     // RR指标堆叠柱状图数据（首年FYC + 续保 + 基金）
-    fyc: Math.round(data.trends.rrValues[i] * 0.45),
-    renewal: Math.round(data.trends.rrValues[i] * 0.35),
-    fund: Math.round(data.trends.rrValues[i] * 0.20),
+    fyc: Math.round((rrTrend?.values[i] || 0) * 0.45),
+    renewal: Math.round((rrTrend?.values[i] || 0) * 0.35),
+    fund: Math.round((rrTrend?.values[i] || 0) * 0.20),
     // 完成率（RR / 目标 * 100）
-    completionRate: Math.round((data.trends.rrValues[i] / data.trends.target) * 100)
+    completionRate: Math.round(((rrTrend?.values[i] || 0) / (rrTrend?.target || 50000)) * 100)
   }));
 
   return (
@@ -236,7 +253,7 @@ export default function App() {
 
       <div className="top-nav" id="topNav">
         <select className="nav-fm-select" value={currentSelection.fmId} onChange={(e)=>handleFmChange(e.target.value)}>
-          {mockData.fms.map(fm=>(
+          {fmList.map((fm: FmItem)=>(
             <option key={fm.id} value={fm.id}>{fm.name}</option>
           ))}
         </select>
@@ -261,32 +278,32 @@ export default function App() {
           <div className="metric-card">
             <div className="card-header">
               <span>RR指标</span>
-              <span style={{fontSize:'12px', fontWeight:'normal', color:'#666'}}>目标：{data.rr.target.toLocaleString()}</span>
+              <span style={{fontSize:'12px', fontWeight:'normal', color:'#666'}}>目标：{rrMetrics.target.toLocaleString()}</span>
             </div>
             <div className="rr-total-block">
               <div className="rr-total-main">
                 <span className="rr-total-label">RR汇总</span>
-                <span className="rr-total-val">{data.rr.total.toLocaleString()}</span>
+                <span className="rr-total-val">{rrMetrics.total.toLocaleString()}</span>
               </div>
               <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                <span className="rr-meta">完成人数：<strong>{data.rr.people70}</strong></span>
-                <span className="rr-rate-badge" style={{backgroundColor: data.rr.rate >=100 ? '#e6ffed' : '#fffff0', color: data.rr.rate >=100 ? 'var(--success-green)' : 'var(--alert-red)'}}>
-                  {data.rr.rate.toFixed(1)}%
+                <span className="rr-meta">完成人数：<strong>{rrMetrics.people70}</strong></span>
+                <span className="rr-rate-badge" style={{backgroundColor: rrMetrics.rate >=100 ? '#e6ffed' : '#fffff0', color: rrMetrics.rate >=100 ? 'var(--success-green)' : 'var(--alert-red)'}}>
+                  {rrMetrics.rate.toFixed(1)}%
                 </span>
               </div>
             </div>
             <div className="metric-list">
               <div className="metric-item insurance-new">
                 <span className="item-label">首年RR</span>
-                <span className="item-val">{data.rr.insuranceNew.toLocaleString()}</span>
+                <span className="item-val">{rrMetrics.insuranceNew.toLocaleString()}</span>
               </div>
               <div className="metric-item insurance-renew">
                 <span className="item-label">续保RR</span>
-                <span className="item-val">{data.rr.insuranceRenew.toLocaleString()}</span>
+                <span className="item-val">{rrMetrics.insuranceRenew.toLocaleString()}</span>
               </div>
               <div className="metric-item fund">
                 <span className="item-label">基金RR</span>
-                <span className="item-val">{data.rr.fund.toLocaleString()}</span>
+                <span className="item-val">{rrMetrics.fund.toLocaleString()}</span>
               </div>
             </div>
           </div>
@@ -296,33 +313,33 @@ export default function App() {
             <div className="card-header">
               <span>收入指标</span>
               <span style={{fontSize:'12px', background:'#fff1f0', padding:'2px 6px', borderRadius:'4px', color:'var(--alert-red)'}}>
-                环比 {data.income.total > 0 ? '↑' : '↓'}
+                环比 {incomeMetrics.total > 0 ? '↑' : '↓'}
               </span>
             </div>
             <div className="rr-total-block">
               <div className="rr-total-main">
                 <span className="rr-total-label">总收入</span>
-                <span className="rr-total-val">{data.income.total.toLocaleString()}</span>
+                <span className="rr-total-val">{incomeMetrics.total.toLocaleString()}</span>
               </div>
               <div style={{fontSize:'12px', color:'#666', marginTop:'10px'}}>
-                构成：FYC {data.income.fycShare}%｜续期 {data.income.renewalShare}%｜基金 {data.income.fundShare}%
+                构成：FYC {incomeMetrics.fycShare}%｜续期 {incomeMetrics.renewalShare}%｜基金 {incomeMetrics.fundShare}%
               </div>
             </div>
             <div className="metric-list">
               <div className="metric-item fyc">
                 <span className="item-label">FYC</span>
-                <span className="item-val">{data.income.fyc.toLocaleString()}</span>
-                <span className="item-detail">{data.income.fycShare}%</span>
+                <span className="item-val">{incomeMetrics.fyc.toLocaleString()}</span>
+                <span className="item-detail">{incomeMetrics.fycShare}%</span>
               </div>
               <div className="metric-item renewal">
                 <span className="item-label">续期佣金</span>
-                <span className="item-val">{data.income.renewal.toLocaleString()}</span>
-                <span className="item-detail">{data.income.renewalShare}%</span>
+                <span className="item-val">{incomeMetrics.renewal.toLocaleString()}</span>
+                <span className="item-detail">{incomeMetrics.renewalShare}%</span>
               </div>
               <div className="metric-item fund-inc">
                 <span className="item-label">基金收入</span>
-                <span className="item-val">{data.income.fundInc.toLocaleString()}</span>
-                <span className="item-detail">{data.income.fundShare}%</span>
+                <span className="item-val">{incomeMetrics.fundInc.toLocaleString()}</span>
+                <span className="item-detail">{incomeMetrics.fundShare}%</span>
               </div>
             </div>
           </div>
@@ -332,19 +349,19 @@ export default function App() {
             <div className="card-header">续保率指标</div>
             <div className="retention-grid">
               <div className="retention-card">
-                <div className="retention-val">{data.retention.anp13}%</div>
+                <div className="retention-val">{retentionMetrics.anp13}%</div>
                 <div className="retention-label">13月续保率<br/>(ANP)</div>
               </div>
               <div className="retention-card">
-                <div className="retention-val">{data.retention.count13}</div>
+                <div className="retention-val">{retentionMetrics.count13}</div>
                 <div className="retention-label">13月续保<br/>(件数)</div>
               </div>
               <div className="retention-card">
-                <div className="retention-val">{data.retention.anp25}%</div>
+                <div className="retention-val">{retentionMetrics.anp25}%</div>
                 <div className="retention-label">25月续保率<br/>(ANP)</div>
               </div>
               <div className="retention-card">
-                <div className="retention-val">{data.retention.count25}</div>
+                <div className="retention-val">{retentionMetrics.count25}</div>
                 <div className="retention-label">25月续保<br/>(件数)</div>
               </div>
             </div>
@@ -577,7 +594,7 @@ export default function App() {
             </tr>
           </thead>
           <tbody>
-            {generateActivityRows(data.activity).map((row,i)=>(
+            {generateActivityRows(activity).map((row,i)=>(
               <tr key={i}>
                 <td>{row.name}</td>
                 <td>{row.target}</td>
@@ -595,39 +612,39 @@ export default function App() {
           <div className="ops-card">
             <div className="card-header">新客运营</div>
             <div style={{display:'flex', justifyContent:'space-between', marginBottom:'15px', fontWeight:'bold', color:'var(--hsbc-red)', fontSize:'14px'}}>
-              <span>新增客户人数：{data.customerOps.new.events.count + data.customerOps.new.self.count}</span>
-              <span>目标：{data.customerOps.new.events.target + data.customerOps.new.self.target}</span>
-              <span>完成率：{((data.customerOps.new.events.count + data.customerOps.new.self.count) / (data.customerOps.new.events.target + data.customerOps.new.self.target) *100).toFixed(1)}%</span>
+              <span>新增客户人数：{newCustomer.events.count + newCustomer.self.count}</span>
+              <span>目标：{newCustomer.events.target + newCustomer.self.target}</span>
+              <span>完成率：{((newCustomer.events.count + newCustomer.self.count) / (newCustomer.events.target + newCustomer.self.target) *100).toFixed(1)}%</span>
             </div>
             <div className="ops-grid-2">
               <div className="ops-sub-card">
                 <h4>新客事件</h4>
                 <div className="ops-stat-row">
                   <span>人数</span>
-                  <span className="ops-stat-val">{data.customerOps.new.events.count}</span>
+                  <span className="ops-stat-val">{newCustomer.events.count}</span>
                 </div>
                 <div className="ops-stat-row">
                   <span>MTD联系率</span>
-                  <span className="ops-stat-val">{data.customerOps.new.events.mtdContact}%</span>
+                  <span className="ops-stat-val">{newCustomer.events.mtdContact}%</span>
                 </div>
                 <div className="ops-stat-row">
                   <span>MTD会面率</span>
-                  <span className="ops-stat-val">{data.customerOps.new.events.mtdMeet}%</span>
+                  <span className="ops-stat-val">{newCustomer.events.mtdMeet}%</span>
                 </div>
               </div>
               <div className="ops-sub-card">
                 <h4>自主新客</h4>
                 <div className="ops-stat-row">
                   <span>人数</span>
-                  <span className="ops-stat-val">{data.customerOps.new.self.count}</span>
+                  <span className="ops-stat-val">{newCustomer.self.count}</span>
                 </div>
                 <div className="ops-stat-row">
                   <span>MTD联系率</span>
-                  <span className="ops-stat-val">{data.customerOps.new.self.mtdContact}%</span>
+                  <span className="ops-stat-val">{newCustomer.self.mtdContact}%</span>
                 </div>
                 <div className="ops-stat-row">
                   <span>MTD会面率</span>
-                  <span className="ops-stat-val">{data.customerOps.new.self.mtdMeet}%</span>
+                  <span className="ops-stat-val">{newCustomer.self.mtdMeet}%</span>
                 </div>
               </div>
             </div>
@@ -637,22 +654,22 @@ export default function App() {
             <div className="card-header">老客运营</div>
             <div className="kpi-row-horizontal">
               <div className="kpi-box-h">
-                <div className="val">{data.customerOps.old.total}</div>
+                <div className="val">{oldCustomerSummary.total}</div>
                 <div className="sub-val">客户人数</div>
                 <div className="lbl">Call List 人数</div>
               </div>
               <div className="kpi-box-h">
-                <div className="val">{data.customerOps.old.callList}</div>
+                <div className="val">{oldCustomerSummary.callList}</div>
                 <div className="sub-val">Call List</div>
                 <div className="lbl">Call List 人数</div>
               </div>
               <div className="kpi-box-h">
-                <div className="val">{data.customerOps.old.callListContactRate}%</div>
+                <div className="val">{oldCustomerSummary.callListContactRate}%</div>
                 <div className="sub-val">Call List 联系率</div>
                 <div className="lbl">Call List 联系率</div>
               </div>
               <div className="kpi-box-h">
-                <div className="val">{data.customerOps.old.callListMeetRate}%</div>
+                <div className="val">{oldCustomerSummary.callListMeetRate}%</div>
                 <div className="sub-val">Call List 会面率</div>
                 <div className="lbl">Call List 会面率</div>
               </div>
@@ -671,7 +688,7 @@ export default function App() {
                 </tr>
               </thead>
               <tbody>
-                {data.customerOps.old.table.map((row,idx)=>(
+                {oldCustomerList.map((row,idx)=>(
                   <tr key={idx}>
                     <td>{row.type}</td>
                     <td>{row.count}</td>
@@ -692,18 +709,18 @@ export default function App() {
             <div className="card-header">基金跟踪</div>
             <div className="kpi-row-horizontal">
               <div className="kpi-box-h">
-                <div className="val">{data.policyFund.fund.holding.count}</div>
-                <div className="sub-val">AUM：{(data.policyFund.fund.holding.aum / 10000).toFixed(1)}万</div>
+                <div className="val">{fundSummary.holding.count}</div>
+                <div className="sub-val">AUM：{(fundSummary.holding.aum / 10000).toFixed(1)}万</div>
                 <div className="lbl">持仓客户数/AUM</div>
               </div>
               <div className="kpi-box-h">
-                <div className="val">{data.policyFund.fund.huikunbao.count}</div>
-                <div className="sub-val">AUM：{(data.policyFund.fund.huikunbao.aum / 10000).toFixed(1)}万</div>
+                <div className="val">{fundSummary.huikunbao.count}</div>
+                <div className="sub-val">AUM：{(fundSummary.huikunbao.aum / 10000).toFixed(1)}万</div>
                 <div className="lbl">汇钱宝客户/AUM</div>
               </div>
               <div className="kpi-box-h">
-                <div className="val">{data.policyFund.fund.fundNoIns.count}</div>
-                <div className="sub-val">AUM：{(data.policyFund.fund.fundNoIns.aum / 10000).toFixed(1)}万</div>
+                <div className="val">{fundSummary.fundNoIns.count}</div>
+                <div className="sub-val">AUM：{(fundSummary.fundNoIns.aum / 10000).toFixed(1)}万</div>
                 <div className="lbl">持有基金无保险客户/AUM</div>
               </div>
             </div>
@@ -719,7 +736,7 @@ export default function App() {
                 </tr>
               </thead>
               <tbody>
-                {data.policyFund.fund.table.map((row,i)=>(
+                {fundList.map((row,i)=>(
                   <tr key={i}>
                     <td>
                       <span className={`priority-label priority-${row.priority}`}>{getPriorityLabel(row.priority)}</span>
