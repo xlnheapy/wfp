@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WFP销售人员诊断中心 - 保单跟进与关系维护</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; background: #f0f2f5; }
+        .header { background: linear-gradient(135deg, #8b0000 0%, #a30017 50%, #8b0000 100%); height: 48px; display: flex; align-items: center; padding: 0 20px; color: #fff; }
+        .header-logo { font-size: 16px; font-weight: 600; letter-spacing: 1px; }
+        .header-right { margin-left: auto; display: flex; align-items: center; gap: 16px; font-size: 13px; }
+        .header-select { background: rgba(255,255,255,0.15); border: none; color: #fff; padding: 4px 12px; border-radius: 4px; font-size: 13px; }
+        .header-select option { color: #333; }
+        .layout { display: flex; height: calc(100vh - 48px); }
+        .sidebar { width: 220px; background: #001529; color: rgba(255,255,255,0.65); overflow-y: auto; }
+        .sidebar-section { padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        .sidebar-title { padding: 8px 16px; font-size: 12px; color: rgba(255,255,255,0.45); letter-spacing: 1px; }
+        .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 16px; cursor: pointer; transition: all 0.2s; font-size: 14px; }
+        .nav-item:hover { background: rgba(255,255,255,0.08); color: #fff; }
+        .nav-item.active { background: #1890ff; color: #fff; }
+        .member-item { display: flex; align-items: center; gap: 10px; padding: 8px 16px; cursor: pointer; transition: all 0.2s; }
+        .member-item:hover { background: rgba(255,255,255,0.08); }
+        .member-item.active { background: rgba(24,144,255,0.2); border-left: 3px solid #1890ff; }
+        .member-avatar { width: 28px; height: 28px; border-radius: 50%; background: #1890ff; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; }
+        .member-name { font-size: 13px; }
+        .main { flex: 1; overflow-y: auto; padding: 20px; }
+        .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+        .page-title { font-size: 18px; font-weight: 600; color: #333; padding-left: 10px; border-left: 3px solid #8b0000; }
+        .card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 16px; }
+        .card-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #f0f0f0; }
+        .card-title { font-size: 15px; font-weight: 600; color: #333; }
+        .card-body { padding: 16px; }
+        .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px; }
+        .stat-box { background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .stat-label { font-size: 13px; color: #666; margin-bottom: 8px; }
+        .stat-value { font-size: 28px; font-weight: 600; }
+        .stat-suffix { font-size: 14px; color: #999; margin-left: 4px; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #fafafa; padding: 12px; text-align: left; font-size: 13px; font-weight: 600; color: #333; border-bottom: 1px solid #f0f0f0; }
+        td { padding: 12px; font-size: 13px; color: #666; border-bottom: 1px solid #f0f0f0; }
+        tr:hover td { background: #e6f7ff; }
+        .tag { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+        .tag-green { background: #f6ffed; color: #52c41a; border: 1px solid #b7eb8f; }
+        .tag-blue { background: #e6f7ff; color: #1890ff; border: 1px solid #91d5ff; }
+        .tag-orange { background: #fff7e6; color: #fa8c16; border: 1px solid #ffd591; }
+        .tag-red { background: #fff2f0; color: #ff4d4f; border: 1px solid #ffccc7; }
+        .tag-gray { background: #f5f5f5; color: #999; border: 1px solid #d9d9d9; }
+        .alert-card { border-left: 4px solid #faad14 !important; }
+        .timeline { padding-left: 20px; border-left: 2px solid #f0f0f0; }
+        .timeline-item { position: relative; padding: 12px 0 12px 20px; }
+        .timeline-item::before { content: ''; position: absolute; left: -26px; top: 18px; width: 10px; height: 10px; border-radius: 50%; background: #faad14; }
+        .timeline-title { font-weight: 600; color: #333; }
+        .timeline-desc { font-size: 13px; color: #666; margin-top: 4px; }
+        .timeline-meta { font-size: 12px; color: #999; margin-top: 4px; }
+        .policy-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px; }
+        .policy-box { background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .policy-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .policy-anp { font-size: 12px; color: #999; }
+        .policy-value { font-size: 20px; font-weight: 600; color: #1890ff; }
+        .policy-label { font-size: 13px; color: #666; margin-top: 8px; }
+        .policy-suggest { font-size: 12px; color: #fa8c16; margin-top: 8px; padding: 6px 10px; background: #fff7e6; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-logo">WFP销售人员诊断中心</div>
+        <div class="header-right">
+            <select class="header-select"><option>张经理 (FM)</option><option>李销售 (WFP)</option><option>王销售 (WFP)</option></select>
+            <span>|</span>
+            <select class="header-select"><option>近30天</option><option>本月</option><option>近3个月</option></select>
+            <span>管理员</span>
+        </div>
+    </header>
+
+    <div class="layout">
+        <aside class="sidebar">
+            <div class="sidebar-section">
+                <div class="sidebar-title">功能导航</div>
+                <div class="nav-item">📊 业务指标中心</div>
+                <div class="nav-item">📅 活动跟踪</div>
+                <div class="nav-item"> 👥 客户运营</div>
+                <div class="nav-item active">📋 保单跟进与关系维护</div>
+            </div>
+            <div class="sidebar-section">
+                <div class="sidebar-title">张经理 (FM) 团队</div>
+                <div class="member-item active"><div class="member-avatar">全</div><div class="member-name">全部成员</div></div>
+                <div class="member-item"><div class="member-avatar">李</div><div class="member-name">李销售</div></div>
+                <div class="member-item"><div class="member-avatar">王</div><div class="member-name">王销售</div></div>
+            </div>
+        </aside>
+
+        <main class="main">
+            <div class="page-header">
+                <h2 class="page-title">保单跟进与关系维护</h2>
+            </div>
+
+            <!-- 保单统计 -->
+            <div class="stat-row">
+                <div class="stat-box">
+                    <div class="stat-label">有效保单</div>
+                    <div class="stat-value" style="color: #52c41a;">128<span class="stat-suffix">份</span></div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">待生效</div>
+                    <div class="stat-value" style="color: #1890ff;">5<span class="stat-suffix">份</span></div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">保费总额</div>
+                    <div class="stat-value" style="color: #722ed1;">¥2,580,000</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">即将到期</div>
+                    <div class="stat-value" style="color: #fa8c16;">8<span class="stat-suffix">份</span></div>
+                </div>
+            </div>
+
+            <!-- 待续保/孤儿单分析 -->
+            <div class="policy-grid">
+                <div class="policy-box">
+                    <div class="policy-header">
+                        <span style="font-weight: 600; color: #333;">当前待续保人数/ANP</span>
+                        <span class="policy-anp">ANP: ¥500,000</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div class="policy-value">80</div>
+                            <div class="policy-label">待续保客户数</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 18px; font-weight: 600; color: #52c41a;">¥500,000</div>
+                            <div class="policy-label">待续保ANP</div>
+                        </div>
+                    </div>
+                    <div class="policy-suggest">建议: 优先联系高价值客户</div>
+                </div>
+                <div class="policy-box">
+                    <div class="policy-header">
+                        <span style="font-weight: 600; color: #333;">当前孤儿单户数/ANP</span>
+                        <span class="policy-anp">ANP: ¥150,000</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div class="policy-value">40</div>
+                            <div class="policy-label">孤儿单客户数</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 18px; font-weight: 600; color: #1890ff;">¥150,000</div>
+                            <div class="policy-label">孤儿单ANP</div>
+                        </div>
+                    </div>
+                    <div class="policy-suggest">建议: 分配服务人员跟进</div>
+                </div>
+                <div class="policy-box">
+                    <div class="policy-header">
+                        <span style="font-weight: 600; color: #333;">已签待扣保单</span>
+                        <span class="policy-anp">ANP: ¥80,000</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div class="policy-value">5</div>
+                            <div class="policy-label">待扣款保单数</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 18px; font-weight: 600; color: #fa8c16;">¥80,000</div>
+                            <div class="policy-label">待扣款金额</div>
+                        </div>
+                    </div>
+                    <div class="policy-suggest">建议: 立即跟进扣款</div>
+                </div>
+            </div>
+
+            <!-- 即将到期提醒 -->
+            <div class="card alert-card">
+                <div class="card-header">
+                    <span class="card-title">即将到期保单 (30天内)</span>
+                    <span class="tag tag-orange">8 份待处理</span>
+                </div>
+                <div class="card-body">
+                    <div class="timeline">
+                        <div class="timeline-item">
+                            <div class="timeline-title">HSB20240001 - 王建国</div>
+                            <div class="timeline-desc">终身寿险 | 保费 ¥120,000 | 到期日: 2024-01-25</div>
+                            <div class="timeline-meta">服务人员: 李销售 | <a href="#" style="color: #1890ff;">立即跟进</a></div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-title">HSB20240003 - 赵丽娟</div>
+                            <div class="timeline-desc">年金险 | 保费 ¥200,000 | 到期日: 2024-01-28</div>
+                            <div class="timeline-meta">服务人员: 王销售 | <a href="#" style="color: #1890ff;">立即跟进</a></div>
+                        </div>
+                        <div class="timeline-item">
+                            <div class="timeline-title">HSB20240005 - 张志强</div>
+                            <div class="timeline-desc">医疗险 | 保费 ¥15,000 | 到期日: 2024-02-01</div>
+                            <div class="timeline-meta">服务人员: 李销售 | <a href="#" style="color: #1890ff;">立即跟进</a></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 保单列表 -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">保单列表</span>
+                </div>
+                <div class="card-body" style="padding: 0;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>保单号</th>
+                                <th>客户姓名</th>
+                                <th>险种类型</th>
+                                <th>保费</th>
+                                <th>起保日期</th>
+                                <th>到期日期</th>
+                                <th>状态</th>
+                                <th>服务人员</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>HSB20240001</td>
+                                <td>王建国</td>
+                                <td>终身寿险</td>
+                                <td>¥120,000</td>
+                                <td>2024-01-01</td>
+                                <td>2044-01-01</td>
+                                <td><span class="tag tag-green">有效</span></td>
+                                <td>李销售</td>
+                                <td><a href="#" style="color: #1890ff; margin-right: 8px;">跟进</a><a href="#" style="color: #1890ff;">详情</a></td>
+                            </tr>
+                            <tr>
+                                <td>HSB20240002</td>
+                                <td>王建国</td>
+                                <td>重疾险</td>
+                                <td>¥80,000</td>
+                                <td>2024-01-05</td>
+                                <td>2044-01-05</td>
+                                <td><span class="tag tag-green">有效</span></td>
+                                <td>李销售</td>
+                                <td><a href="#" style="color: #1890ff; margin-right: 8px;">跟进</a><a href="#" style="color: #1890ff;">详情</a></td>
+                            </tr>
+                            <tr>
+                                <td>HSB20240003</td>
+                                <td>李美华</td>
+                                <td>年金险</td>
+                                <td>¥200,000</td>
+                                <td>2023-06-01</td>
+                                <td>2043-06-01</td>
+                                <td><span class="tag tag-green">有效</span></td>
+                                <td>李销售</td>
+                                <td><a href="#" style="color: #1890ff; margin-right: 8px;">跟进</a><a href="#" style="color: #1890ff;">详情</a></td>
+                            </tr>
+                            <tr>
+                                <td>HSB20240004</td>
+                                <td>张志强</td>
+                                <td>医疗险</td>
+                                <td>¥15,000</td>
+                                <td>2024-01-10</td>
+                                <td>2025-01-10</td>
+                                <td><span class="tag tag-green">有效</span></td>
+                                <td>王销售</td>
+                                <td><a href="#" style="color: #1890ff; margin-right: 8px;">跟进</a><a href="#" style="color: #1890ff;">详情</a></td>
+                            </tr>
+                            <tr>
+                                <td>HSB20240005</td>
+                                <td>赵丽娟</td>
+                                <td>终身寿险</td>
+                                <td>¥150,000</td>
+                                <td>2023-03-01</td>
+                                <td>2043-03-01</td>
+                                <td><span class="tag tag-green">有效</span></td>
+                                <td>王销售</td>
+                                <td><a href="#" style="color: #1890ff; margin-right: 8px;">跟进</a><a href="#" style="color: #1890ff;">详情</a></td>
+                            </tr>
+                            <tr>
+                                <td>HSB20240006</td>
+                                <td>刘芳</td>
+                                <td>意外险</td>
+                                <td>¥3,000</td>
+                                <td>2024-01-12</td>
+                                <td>2025-01-12</td>
+                                <td><span class="tag tag-blue">待生效</span></td>
+                                <td>王销售</td>
+                                <td><a href="#" style="color: #1890ff; margin-right: 8px;">跟进</a><a href="#" style="color: #1890ff;">详情</a></td>
+                            </tr>
+                            <tr>
+                                <td>HSB20230010</td>
+                                <td>陈明</td>
+                                <td>重疾险</td>
+                                <td>¥45,000</td>
+                                <td>2023-01-01</td>
+                                <td>2024-01-01</td>
+                                <td><span class="tag tag-gray">已过期</span></td>
+                                <td>李销售</td>
+                                <td><a href="#" style="color: #1890ff; margin-right: 8px;">续保</a><a href="#" style="color: #1890ff;">详情</a></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>
