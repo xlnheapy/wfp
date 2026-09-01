@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'CRM 管理系统',
-  description: '保险行业客户关系管理系统',
+  title: 'WFP销售人员诊断中心',
+  description: 'WFP销售人员诊断中心 - 业绩指标、活动跟踪、客户运营、保单跟进',
 };
 
 export default function RootLayout({
