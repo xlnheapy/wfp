@@ -1,23 +1,21 @@
-'use client'
-
 import { useState, useEffect, useCallback } from 'react'
 import ReactECharts from 'echarts-for-react'
 import {
-  fetchFmWfpList,
-  fetchRrMetrics,
-  fetchIncomeMetrics,
-  fetchRetentionMetrics,
-  fetchRrTrend,
-  fetchIncomeTrend,
-  fetchActivity,
-  fetchNewCustomer,
-  fetchOldCustomerSummary,
-  fetchOldCustomerList,
-  fetchPolicySummary,
-  fetchPolicyList,
-  fetchFundSummary,
-  fetchFundList
-} from '@/services/api'
+  getFmWfpList,
+  getRrMetrics,
+  getIncomeMetrics,
+  getRetentionMetrics,
+  getRrTrend,
+  getIncomeTrend,
+  getActivity,
+  getNewCustomer,
+  getOldCustomerSummary,
+  getOldCustomerList,
+  getPolicySummary,
+  getPolicyList,
+  getFundSummary,
+  getFundList
+} from '@/services/mock-data'
 
 // FM/WFP 列表类型
 interface FmItem {
@@ -153,19 +151,19 @@ export default function App() {
     const params = getQueryParams()
     try {
       const [rr, income, retention, rrTr, incomeTr, act, newCust, oldSum, oldLst, polSum, polLst, fndSum, fndLst] = await Promise.all([
-        fetchRrMetrics(params),
-        fetchIncomeMetrics(params),
-        fetchRetentionMetrics(params),
-        fetchRrTrend(params),
-        fetchIncomeTrend(params),
-        fetchActivity(params),
-        fetchNewCustomer(params),
-        fetchOldCustomerSummary(params),
-        fetchOldCustomerList(params),
-        fetchPolicySummary(params),
-        fetchPolicyList(params),
-        fetchFundSummary(params),
-        fetchFundList(params)
+        getRrMetrics(params),
+        getIncomeMetrics(params),
+        getRetentionMetrics(params),
+        getRrTrend(params),
+        getIncomeTrend(params),
+        getActivity(params),
+        getNewCustomer(params),
+        getOldCustomerSummary(params),
+        getOldCustomerList(params),
+        getPolicySummary(params),
+        getPolicyList(params),
+        getFundSummary(params),
+        getFundList(params)
       ])
       setRrMetrics(rr)
       setIncomeMetrics(income)
@@ -187,13 +185,12 @@ export default function App() {
 
   // 初始化加载 FM/WFP 列表
   useEffect(() => {
-    fetchFmWfpList().then(data => {
-      setFmList(data.fms)
-      if (data.fms.length > 0) {
-        const firstWfp = data.fms[0].wfps?.[0]?.id || null
-        setCurrentSelection({ fmId: data.fms[0].id, wfpId: firstWfp })
-      }
-    })
+    const data = getFmWfpList()
+    setFmList(data.fms)
+    if (data.fms.length > 0) {
+      const firstWfp = data.fms[0].wfps?.[0]?.id || null
+      setCurrentSelection({ fmId: data.fms[0].id, wfpId: firstWfp })
+    }
   }, [])
 
   // 当选择条件变化时重新加载数据

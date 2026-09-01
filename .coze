@@ -1,17 +1,10 @@
 [project]
-requires = [ "nodejs-24" ]
-project_type = "web"
-template = "nextjs"
-version = "0.0.35"
-appliedPatches = [ ]
+requires = ["nodejs-24"]
 
 [dev]
-build = [ "bash", "./scripts/prepare.sh" ]
-run = [ "bash", "./scripts/dev.sh" ]
-validate = [ "bash", "./scripts/validate.sh" ]
-deps = [ "git" ]
+build = ["npm", "install"]
+run = ["npm", "run", "dev"]
 
 [deploy]
-build = [ "bash", "./scripts/build.sh" ]
-run = [ "bash", "./scripts/start.sh" ]
-deps = [ "git" ]
+build = ["npm", "run", "build"]
+run = ["npm", "run", "preview"]
