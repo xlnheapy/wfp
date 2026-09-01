@@ -51,20 +51,49 @@ interface QueryParams {
 
 // 1. FM和WFP列表
 export async function fetchFmWfpList() {
-  // TODO: 实现 Qlik 查询
-  const layout = await executeQlikQuery(QLIK_CONFIG.appId, 'fm-wfp-list');
-  return {
-    fms: [
-      {
-        id: 'fm001',
-        name: '张经理 (FM)',
-        wfps: [
-          { id: 'wfp001', name: '李销售 (WFP)' },
-          { id: 'wfp002', name: '王销售 (WFP)' },
-        ],
-      },
-    ],
-  };
+  const session = await createSession();
+  const app = await session.openDoc(QLIK_CONFIG.appId);
+
+  // 创建超立方体查询 FM 和 WFP 列表
+  const object = await app.createSessionObject({
+    qInfo: { qType: 'fm-wfp-list' },
+    qHyperCubeDef: {
+      qDimensions: [
+        { qDef: { qFieldDefs: ['FM_ID'], qSortCriterias: [{ qSortByAscii: 1 }] } },
+        { qDef: { qFieldDefs: ['FM_NAME'], qSortCriterias: [{ qSortByAscii: 1 }] } },
+        { qDef: { qFieldDefs: ['WFP_ID'], qSortCriterias: [{ qSortByAscii: 1 }] } },
+        { qDef: { qFieldDefs: ['WFP_NAME'], qSortCriterias: [{ qSortByAscii: 1 }] } },
+      ],
+      qMeasures: [],
+      qInitialDataFetch: [{ qTop: 0, qLeft: 0, qHeight: 1000, qWidth: 4 }],
+    },
+  });
+
+  const layout = await object.getLayout();
+  const data = layout.qHyperCube.qDataPages[0]?.qMatrix || [];
+
+  // 解析数据，按 FM 分组
+  const fmMap = new Map<string, { id: string; name: string; wfps: any[] }>();
+
+  for (const row of data) {
+    const fmId = row[0]?.qText || '';
+    const fmName = row[1]?.qText || '';
+    const wfpId = row[2]?.qText || '';
+    const wfpName = row[3]?.qText || '';
+
+    if (!fmMap.has(fmId)) {
+      fmMap.set(fmId, { id: fmId, name: fmName, wfps: [] });
+    }
+
+    if (wfpId) {
+      fmMap.get(fmId)!.wfps.push({ id: wfpId, name: wfpName });
+    }
+  }
+
+  // 关闭对象释放资源
+  await object.destroySessionObject();
+
+  return { fms: Array.from(fmMap.values()) };
 }
 
 // 2. RR指标
