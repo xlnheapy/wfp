@@ -4,201 +4,380 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WFP销售人员诊断中心 - 客户运营</title>
-    <script src="https://cdn.tailwindcss.com"></script>
     <style>
+        :root {
+            --hsbc-red: #d51e27;
+            --hsbc-gold: #c5a055;
+            --hsbc-sand: #e8dcc8;
+            --success-green: #52c41a;
+            --alert-red: #ff4d4f;
+            --border-color: #e8e8e8;
+            --nav-height: 48px;
+            --header-bg: linear-gradient(135deg, #8b0000 0%, #a30017 50%, #8b0000 100%);
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; background: #f0f2f5; }
-        .header { background: linear-gradient(135deg, #8b0000 0%, #a30017 50%, #8b0000 100%); height: 48px; display: flex; align-items: center; padding: 0 20px; color: #fff; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; background: #f5f5f5; }
+        
+        /* Header */
+        .header { background: var(--header-bg); height: var(--nav-height); display: flex; align-items: center; padding: 0 20px; color: #fff; justify-content: space-between; }
         .header-logo { font-size: 16px; font-weight: 600; letter-spacing: 1px; }
-        .header-right { margin-left: auto; display: flex; align-items: center; gap: 16px; font-size: 13px; }
-        .header-select { background: rgba(255,255,255,0.15); border: none; color: #fff; padding: 4px 12px; border-radius: 4px; font-size: 13px; }
-        .header-select option { color: #333; }
-        .layout { display: flex; height: calc(100vh - 48px); }
-        .sidebar { width: 220px; background: #001529; color: rgba(255,255,255,0.65); overflow-y: auto; }
+        .header-right { display: flex; align-items: center; gap: 16px; font-size: 13px; }
+        .header select {
+            padding: 6px 12px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.3);
+            background-color: rgba(255,255,255,0.1); color: white; font-size: 14px;
+            cursor: pointer; outline: none; min-width: 150px; appearance: none;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3e%3cpath d='M7 10l5 5 5-5z'/%3e%3c/svg%3e");
+            background-repeat: no-repeat; background-position: right 8px center; background-size: 16px; padding-right: 30px;
+        }
+        .header select option { color: #333; }
+        
+        /* Navigation */
+        .nav-bar { background-color: white; border-bottom: 1px solid var(--border-color); height: var(--nav-height); display: flex; align-items: center; padding: 0 20px; }
+        .nav-tabs { display: flex; gap: 0; }
+        .nav-tab { padding: 12px 20px; cursor: pointer; font-size: 14px; color: #666; border-bottom: 2px solid transparent; transition: all 0.2s; white-space: nowrap; }
+        .nav-tab:hover { color: var(--hsbc-red); }
+        .nav-tab.active { color: var(--hsbc-red); border-bottom-color: var(--hsbc-red); font-weight: 500; }
+        
+        /* Layout */
+        .layout { display: flex; height: calc(100vh - var(--nav-height) * 2); }
+        
+        /* Sidebar */
+        .sidebar { width: 220px; background: #001529; color: rgba(255,255,255,0.65); overflow-y: auto; flex-shrink: 0; }
         .sidebar-section { padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
         .sidebar-title { padding: 8px 16px; font-size: 12px; color: rgba(255,255,255,0.45); letter-spacing: 1px; }
-        .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 16px; cursor: pointer; transition: all 0.2s; font-size: 14px; }
-        .nav-item:hover { background: rgba(255,255,255,0.08); color: #fff; }
-        .nav-item.active { background: #1890ff; color: #fff; }
-        .member-item { display: flex; align-items: center; gap: 10px; padding: 8px 16px; cursor: pointer; transition: all 0.2s; }
+        .member-item { display: flex; align-items: center; gap: 10px; padding: 10px 16px; cursor: pointer; transition: all 0.2s; }
         .member-item:hover { background: rgba(255,255,255,0.08); }
-        .member-item.active { background: rgba(24,144,255,0.2); border-left: 3px solid #1890ff; }
-        .member-avatar { width: 28px; height: 28px; border-radius: 50%; background: #1890ff; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; }
-        .member-name { font-size: 13px; }
+        .member-item.active { background: rgba(213,30,39,0.2); border-left: 3px solid var(--hsbc-red); }
+        .member-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--hsbc-red); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; }
+        .member-info { flex: 1; }
+        .member-name { font-size: 13px; color: rgba(255,255,255,0.85); }
+        .member-role { font-size: 11px; color: rgba(255,255,255,0.45); }
+        
+        /* Main Content */
         .main { flex: 1; overflow-y: auto; padding: 20px; }
-        .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-        .page-title { font-size: 18px; font-weight: 600; color: #333; padding-left: 10px; border-left: 3px solid #8b0000; }
-        .card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 16px; }
-        .card-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #f0f0f0; }
+        
+        /* Cards */
+        .card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 16px; border: 1px solid #f0f0f0; }
+        .card-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #f5f5f5; }
         .card-title { font-size: 15px; font-weight: 600; color: #333; }
         .card-body { padding: 16px; }
-        .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px; }
-        .stat-box { background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-        .stat-label { font-size: 13px; color: #666; margin-bottom: 8px; }
-        .stat-value { font-size: 28px; font-weight: 600; }
-        .stat-suffix { font-size: 14px; color: #999; margin-left: 4px; }
-        table { width: 100%; border-collapse: collapse; }
-        th { background: #fafafa; padding: 12px; text-align: left; font-size: 13px; font-weight: 600; color: #333; border-bottom: 1px solid #f0f0f0; }
-        td { padding: 12px; font-size: 13px; color: #666; border-bottom: 1px solid #f0f0f0; }
-        tr:hover td { background: #e6f7ff; }
-        .tag { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
-        .tag-gold { background: #fffbe6; color: #faad14; border: 1px solid #ffe58f; }
-        .tag-blue { background: #e6f7ff; color: #1890ff; border: 1px solid #91d5ff; }
-        .tag-green { background: #f6ffed; color: #52c41a; border: 1px solid #b7eb8f; }
-        .filter-row { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-        .input { padding: 6px 12px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 13px; width: 240px; }
-        .select { padding: 6px 12px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 13px; }
-        .btn { padding: 6px 16px; border-radius: 4px; font-size: 13px; cursor: pointer; border: 1px solid #d9d9d9; background: #fff; color: #333; }
-        .btn-primary { background: #1890ff; color: #fff; border-color: #1890ff; }
+        
+        /* Customer Stats */
+        .customer-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px; }
+        .customer-stat-card { background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border: 1px solid #f0f0f0; }
+        .customer-stat-value { font-size: 28px; font-weight: 700; color: var(--hsbc-red); margin-bottom: 4px; }
+        .customer-stat-label { font-size: 13px; color: #666; }
+        
+        /* Operations Section */
+        .ops-section { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+        .ops-card { background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border: 1px solid #f0f0f0; }
+        .ops-card-title { font-size: 14px; font-weight: 600; color: #333; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+        .ops-card-title .badge { background: var(--hsbc-red); color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+        .ops-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+        .ops-stat { background: #fafafa; padding: 12px; border-radius: 6px; text-align: center; }
+        .ops-stat-label { font-size: 11px; color: #999; margin-bottom: 4px; }
+        .ops-stat-value { font-size: 18px; font-weight: 600; color: #333; }
+        .ops-stat-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f5f5f5; }
+        .ops-stat-row:last-child { border-bottom: none; }
+        
+        /* Search & Filter */
+        .search-bar { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; }
+        .search-input { flex: 1; padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 13px; outline: none; }
+        .search-input:focus { border-color: var(--hsbc-red); box-shadow: 0 0 0 2px rgba(213,30,39,0.1); }
+        .filter-select { padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 13px; outline: none; background: #fff; }
+        .search-btn { padding: 8px 16px; background: var(--hsbc-red); color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
+        .search-btn:hover { background: #b31820; }
+        
+        /* Table */
+        .data-table { width: 100%; border-collapse: collapse; }
+        .data-table th { background: #fafafa; padding: 10px 12px; text-align: left; font-size: 12px; color: #666; font-weight: 500; border-bottom: 1px solid #e8e8e8; white-space: nowrap; }
+        .data-table td { padding: 10px 12px; font-size: 13px; color: #333; border-bottom: 1px solid #f0f0f0; }
+        .data-table tr:hover { background: #fafafa; }
+        
+        /* Customer Level */
+        .level-tag { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+        .level-vip { background: linear-gradient(135deg, #c5a055, #e8c87a); color: #fff; }
+        .level-normal { background: #e6f7ff; color: #1890ff; border: 1px solid #91d5ff; }
+        .level-potential { background: #f6ffed; color: #52c41a; border: 1px solid #b7eb8f; }
+        
+        /* Old Customer Section */
+        .old-customer-section { margin-top: 16px; }
+        .old-customer-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .old-customer-stats { display: flex; gap: 16px; }
+        .old-stat { display: flex; flex-direction: column; align-items: center; padding: 12px 20px; background: #fafafa; border-radius: 6px; }
+        .old-stat-value { font-size: 20px; font-weight: 700; color: var(--hsbc-red); }
+        .old-stat-label { font-size: 11px; color: #999; margin-top: 2px; }
+        
+        @media (max-width: 1400px) {
+            .customer-stats { grid-template-columns: repeat(2, 1fr); }
+            .ops-section { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
+    <!-- Header -->
     <header class="header">
         <div class="header-logo">WFP销售人员诊断中心</div>
         <div class="header-right">
-            <select class="header-select"><option>张经理 (FM)</option><option>李销售 (WFP)</option><option>王销售 (WFP)</option></select>
-            <span>|</span>
-            <select class="header-select"><option>近30天</option><option>本月</option><option>近3个月</option></select>
-            <span>管理员</span>
+            <select id="teamFilter">
+                <option value="all">全部团队</option>
+                <option value="fm">张经理 (FM)</option>
+                <option value="wfp1">李销售 (WFP)</option>
+                <option value="wfp2">王销售 (WFP)</option>
+            </select>
+            <select id="timeFilter">
+                <option value="mtd">MTD (月至今)</option>
+                <option value="qtd">QTD (季至今)</option>
+                <option value="ytd">YTD (年至今)</option>
+            </select>
+            <span>2024年1月</span>
         </div>
     </header>
-
+    
+    <!-- Navigation -->
+    <nav class="nav-bar">
+        <div class="nav-tabs">
+            <div class="nav-tab" onclick="location.href='business-indicators.html'">业务指标中心</div>
+            <div class="nav-tab" onclick="location.href='activity-tracking.html'">活动跟踪</div>
+            <div class="nav-tab active">客户运营</div>
+            <div class="nav-tab" onclick="location.href='policy-follow-up.html'">保单跟进与关系维护</div>
+        </div>
+    </nav>
+    
+    <!-- Layout -->
     <div class="layout">
+        <!-- Sidebar -->
         <aside class="sidebar">
             <div class="sidebar-section">
-                <div class="sidebar-title">功能导航</div>
-                <div class="nav-item">📊 业务指标中心</div>
-                <div class="nav-item">📅 活动跟踪</div>
-                <div class="nav-item active"> 👥 客户运营</div>
-                <div class="nav-item">📋 保单跟进与关系维护</div>
-            </div>
-            <div class="sidebar-section">
-                <div class="sidebar-title">张经理 (FM) 团队</div>
-                <div class="member-item active"><div class="member-avatar">全</div><div class="member-name">全部成员</div></div>
-                <div class="member-item"><div class="member-avatar">李</div><div class="member-name">李销售</div></div>
-                <div class="member-item"><div class="member-avatar">王</div><div class="member-name">王销售</div></div>
+                <div class="sidebar-title">团队成员</div>
+                <div class="member-item active">
+                    <div class="member-avatar">张</div>
+                    <div class="member-info">
+                        <div class="member-name">张经理</div>
+                        <div class="member-role">FM · 团队主管</div>
+                    </div>
+                </div>
+                <div class="member-item">
+                    <div class="member-avatar">李</div>
+                    <div class="member-info">
+                        <div class="member-name">李销售</div>
+                        <div class="member-role">WFP · 高级顾问</div>
+                    </div>
+                </div>
+                <div class="member-item">
+                    <div class="member-avatar">王</div>
+                    <div class="member-info">
+                        <div class="member-name">王销售</div>
+                        <div class="member-role">WFP · 顾问</div>
+                    </div>
+                </div>
+                <div class="member-item">
+                    <div class="member-avatar">赵</div>
+                    <div class="member-info">
+                        <div class="member-name">赵销售</div>
+                        <div class="member-role">WFP · 顾问</div>
+                    </div>
+                </div>
+                <div class="member-item">
+                    <div class="member-avatar">陈</div>
+                    <div class="member-info">
+                        <div class="member-name">陈销售</div>
+                        <div class="member-role">WFP · 顾问</div>
+                    </div>
+                </div>
             </div>
         </aside>
-
+        
+        <!-- Main Content -->
         <main class="main">
-            <div class="page-header">
-                <h2 class="page-title">客户运营</h2>
-            </div>
-
-            <!-- 客户统计 -->
-            <div class="stat-row">
-                <div class="stat-box">
-                    <div class="stat-label">客户总数</div>
-                    <div class="stat-value" style="color: #1890ff;">320<span class="stat-suffix">人</span></div>
+            <!-- Customer Stats -->
+            <div class="customer-stats">
+                <div class="customer-stat-card">
+                    <div class="customer-stat-value">320</div>
+                    <div class="customer-stat-label">总客户数</div>
                 </div>
-                <div class="stat-box">
-                    <div class="stat-label">VIP 客户</div>
-                    <div class="stat-value" style="color: #faad14;">45<span class="stat-suffix">人</span></div>
+                <div class="customer-stat-card">
+                    <div class="customer-stat-value" style="color: var(--hsbc-gold);">45</div>
+                    <div class="customer-stat-label">VIP 客户</div>
                 </div>
-                <div class="stat-box">
-                    <div class="stat-label">累计保费</div>
-                    <div class="stat-value" style="color: #52c41a;">¥1,250,000</div>
+                <div class="customer-stat-card">
+                    <div class="customer-stat-value">¥2,580,000</div>
+                    <div class="customer-stat-label">累计保费</div>
                 </div>
-                <div class="stat-box">
-                    <div class="stat-label">本月新增</div>
-                    <div class="stat-value" style="color: #722ed1;">12<span class="stat-suffix">人</span></div>
+                <div class="customer-stat-card">
+                    <div class="customer-stat-value" style="color: var(--success-green);">12</div>
+                    <div class="customer-stat-label">本月新增客户</div>
                 </div>
             </div>
-
-            <!-- 客户列表 -->
+            
+            <!-- Operations Section -->
+            <div class="ops-section">
+                <!-- New Customer Operations -->
+                <div class="ops-card">
+                    <div class="ops-card-title">
+                        <span class="badge">新客</span>
+                        新客户运营
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 15px; font-weight: bold; color: var(--hsbc-red); font-size: 14px;">
+                        <span>活动数: <span id="newEventCount">20</span></span>
+                        <span>目标: <span id="newTarget">25</span></span>
+                        <span>达成率: <span id="newRate">80.00</span>%</span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div class="ops-sub-card" style="background: #fafafa; padding: 12px; border-radius: 6px;">
+                            <div style="font-size: 12px; color: #999; margin-bottom: 8px;">活动获客</div>
+                            <div class="ops-stat-row"><span>数量</span><span style="font-weight: 600;">12</span></div>
+                            <div class="ops-stat-row"><span>联系率</span><span style="font-weight: 600;">80%</span></div>
+                            <div class="ops-stat-row"><span>会面率</span><span style="font-weight: 600;">60%</span></div>
+                        </div>
+                        <div class="ops-sub-card" style="background: #fafafa; padding: 12px; border-radius: 6px;">
+                            <div style="font-size: 12px; color: #999; margin-bottom: 8px;">自主获客</div>
+                            <div class="ops-stat-row"><span>数量</span><span style="font-weight: 600;">8</span></div>
+                            <div class="ops-stat-row"><span>联系率</span><span style="font-weight: 600;">75%</span></div>
+                            <div class="ops-stat-row"><span>会面率</span><span style="font-weight: 600;">50%</span></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Old Customer Operations -->
+                <div class="ops-card">
+                    <div class="ops-card-title">
+                        <span class="badge">老客</span>
+                        老客户运营
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                        <div style="text-align: center; padding: 12px; background: #fafafa; border-radius: 6px;">
+                            <div style="font-size: 24px; font-weight: 700; color: var(--hsbc-red);">320</div>
+                            <div style="font-size: 12px; color: #999;">总客户数</div>
+                        </div>
+                        <div style="text-align: center; padding: 12px; background: #fafafa; border-radius: 6px;">
+                            <div style="font-size: 24px; font-weight: 700; color: var(--hsbc-red);">45</div>
+                            <div style="font-size: 12px; color: #999;">Call List</div>
+                        </div>
+                    </div>
+                    <div class="ops-stat-row"><span>Call List 联系率</span><span style="font-weight: 600; color: var(--hsbc-red);">65%</span></div>
+                    <div class="ops-stat-row"><span>Call List 会面率</span><span style="font-weight: 600; color: var(--hsbc-red);">30%</span></div>
+                </div>
+            </div>
+            
+            <!-- Search & Filter -->
+            <div class="search-bar">
+                <input type="text" class="search-input" placeholder="搜索客户姓名、手机号...">
+                <select class="filter-select">
+                    <option value="">全部等级</option>
+                    <option value="vip">VIP</option>
+                    <option value="normal">普通</option>
+                    <option value="potential">潜在</option>
+                </select>
+                <select class="filter-select">
+                    <option value="">全部状态</option>
+                    <option value="active">活跃</option>
+                    <option value="inactive">沉默</option>
+                    <option value="new">新增</option>
+                </select>
+                <button class="search-btn">搜索</button>
+            </div>
+            
+            <!-- Customer Table -->
             <div class="card">
                 <div class="card-header">
-                    <span class="card-title">客户列表</span>
+                    <div class="card-title">客户列表</div>
+                    <span style="font-size: 12px; color: #999;">共 320 位客户</span>
                 </div>
-                <div class="card-body">
-                    <div class="filter-row">
-                        <input type="text" class="input" placeholder="搜索客户姓名或电话">
-                        <select class="select">
-                            <option>全部等级</option>
-                            <option>VIP</option>
-                            <option>普通</option>
-                            <option>潜在</option>
-                        </select>
-                        <select class="select">
-                            <option>全部状态</option>
-                            <option>活跃</option>
-                            <option>休眠</option>
-                        </select>
-                        <span style="margin-left: auto; color: #999; font-size: 13px;">共 320 位客户</span>
-                    </div>
-                    <table>
+                <div class="card-body" style="padding: 0; overflow-x: auto;">
+                    <table class="data-table">
                         <thead>
                             <tr>
                                 <th>客户姓名</th>
-                                <th>联系电话</th>
-                                <th>客户等级</th>
-                                <th>保单数</th>
+                                <th>等级</th>
+                                <th>手机号</th>
                                 <th>累计保费</th>
+                                <th>保单数</th>
                                 <th>最近联系</th>
-                                <th>服务人员</th>
+                                <th>状态</th>
                                 <th>操作</th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr>
-                                <td><strong>王建国</strong></td>
-                                <td>138****1234</td>
-                                <td><span class="tag tag-gold">👑 VIP</span></td>
+                                <td style="font-weight: 500;">王先生</td>
+                                <td><span class="level-tag level-vip">VIP</span></td>
+                                <td>138****8888</td>
+                                <td style="font-weight: 600; color: var(--hsbc-red);">¥180,000</td>
                                 <td>5</td>
-                                <td>¥580,000</td>
                                 <td>2024-01-15</td>
-                                <td>李销售</td>
-                                <td><a href="#" style="color: #1890ff;">查看详情</a></td>
+                                <td><span style="color: var(--success-green);">活跃</span></td>
+                                <td><a href="#" style="color: var(--hsbc-red); text-decoration: none;">详情</a></td>
                             </tr>
                             <tr>
-                                <td><strong>李美华</strong></td>
-                                <td>139****5678</td>
-                                <td><span class="tag tag-gold">👑 VIP</span></td>
-                                <td>3</td>
-                                <td>¥420,000</td>
-                                <td>2024-01-14</td>
-                                <td>李销售</td>
-                                <td><a href="#" style="color: #1890ff;">查看详情</a></td>
-                            </tr>
-                            <tr>
-                                <td><strong>张志强</strong></td>
-                                <td>136****9012</td>
-                                <td><span class="tag tag-blue">普通</span></td>
-                                <td>2</td>
-                                <td>¥150,000</td>
-                                <td>2024-01-10</td>
-                                <td>王销售</td>
-                                <td><a href="#" style="color: #1890ff;">查看详情</a></td>
-                            </tr>
-                            <tr>
-                                <td><strong>刘芳</strong></td>
-                                <td>137****3456</td>
-                                <td><span class="tag tag-blue">普通</span></td>
-                                <td>1</td>
-                                <td>¥80,000</td>
-                                <td>2024-01-12</td>
-                                <td>王销售</td>
-                                <td><a href="#" style="color: #1890ff;">查看详情</a></td>
-                            </tr>
-                            <tr>
-                                <td><strong>陈大明</strong></td>
-                                <td>135****7890</td>
-                                <td><span class="tag tag-green">潜在</span></td>
-                                <td>0</td>
-                                <td>¥0</td>
-                                <td>2024-01-13</td>
-                                <td>李销售</td>
-                                <td><a href="#" style="color: #1890ff;">查看详情</a></td>
-                            </tr>
-                            <tr>
-                                <td><strong>赵丽娟</strong></td>
-                                <td>133****2345</td>
-                                <td><span class="tag tag-gold">👑 VIP</span></td>
+                                <td style="font-weight: 500;">李女士</td>
+                                <td><span class="level-tag level-vip">VIP</span></td>
+                                <td>139****6666</td>
+                                <td style="font-weight: 600; color: var(--hsbc-red);">¥150,000</td>
                                 <td>4</td>
-                                <td>¥650,000</td>
+                                <td>2024-01-14</td>
+                                <td><span style="color: var(--success-green);">活跃</span></td>
+                                <td><a href="#" style="color: var(--hsbc-red); text-decoration: none;">详情</a></td>
+                            </tr>
+                            <tr>
+                                <td style="font-weight: 500;">张先生</td>
+                                <td><span class="level-tag level-normal">普通</span></td>
+                                <td>137****5555</td>
+                                <td style="font-weight: 600;">¥50,000</td>
+                                <td>2</td>
+                                <td>2024-01-10</td>
+                                <td><span style="color: var(--hsbc-gold);">沉默</span></td>
+                                <td><a href="#" style="color: var(--hsbc-red); text-decoration: none;">详情</a></td>
+                            </tr>
+                            <tr>
+                                <td style="font-weight: 500;">陈女士</td>
+                                <td><span class="level-tag level-normal">普通</span></td>
+                                <td>136****3333</td>
+                                <td style="font-weight: 600;">¥35,000</td>
+                                <td>1</td>
+                                <td>2024-01-12</td>
+                                <td><span style="color: var(--success-green);">活跃</span></td>
+                                <td><a href="#" style="color: var(--hsbc-red); text-decoration: none;">详情</a></td>
+                            </tr>
+                            <tr>
+                                <td style="font-weight: 500;">赵先生</td>
+                                <td><span class="level-tag level-potential">潜在</span></td>
+                                <td>135****2222</td>
+                                <td style="font-weight: 600;">--</td>
+                                <td>0</td>
+                                <td>2024-01-08</td>
+                                <td><span style="color: #1890ff;">新增</span></td>
+                                <td><a href="#" style="color: var(--hsbc-red); text-decoration: none;">详情</a></td>
+                            </tr>
+                            <tr>
+                                <td style="font-weight: 500;">孙女士</td>
+                                <td><span class="level-tag level-vip">VIP</span></td>
+                                <td>133****1111</td>
+                                <td style="font-weight: 600; color: var(--hsbc-red);">¥220,000</td>
+                                <td>6</td>
+                                <td>2024-01-13</td>
+                                <td><span style="color: var(--success-green);">活跃</span></td>
+                                <td><a href="#" style="color: var(--hsbc-red); text-decoration: none;">详情</a></td>
+                            </tr>
+                            <tr>
+                                <td style="font-weight: 500;">周先生</td>
+                                <td><span class="level-tag level-normal">普通</span></td>
+                                <td>158****9999</td>
+                                <td style="font-weight: 600;">¥28,000</td>
+                                <td>1</td>
+                                <td>2024-01-05</td>
+                                <td><span style="color: var(--hsbc-gold);">沉默</span></td>
+                                <td><a href="#" style="color: var(--hsbc-red); text-decoration: none;">详情</a></td>
+                            </tr>
+                            <tr>
+                                <td style="font-weight: 500;">吴女士</td>
+                                <td><span class="level-tag level-potential">潜在</span></td>
+                                <td>159****7777</td>
+                                <td style="font-weight: 600;">--</td>
+                                <td>0</td>
                                 <td>2024-01-11</td>
-                                <td>王销售</td>
-                                <td><a href="#" style="color: #1890ff;">查看详情</a></td>
+                                <td><span style="color: #1890ff;">新增</span></td>
+                                <td><a href="#" style="color: var(--hsbc-red); text-decoration: none;">详情</a></td>
                             </tr>
                         </tbody>
                     </table>
@@ -206,5 +385,30 @@
             </div>
         </main>
     </div>
+
+    <script>
+        // Sidebar member selection
+        document.querySelectorAll('.member-item').forEach(item => {
+            item.addEventListener('click', function() {
+                document.querySelectorAll('.member-item').forEach(i => i.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+        
+        // Generate activity data
+        function generateActivityData() {
+            const newEvents = { count: 12, target: 15, mtdContact: '80%', mtdMeet: '60%' };
+            const newSelf = { count: 8, target: 10, mtdContact: '75%', mtdMeet: '50%' };
+            const total = newEvents.count + newSelf.count;
+            const totalTarget = newEvents.target + newSelf.target;
+            const rate = ((total / totalTarget) * 100).toFixed(2);
+            
+            document.getElementById('newEventCount').textContent = total;
+            document.getElementById('newTarget').textContent = totalTarget;
+            document.getElementById('newRate').textContent = rate;
+        }
+        
+        generateActivityData();
+    </script>
 </body>
 </html>
