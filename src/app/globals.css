@@ -135,3 +135,97 @@
 body {
   @apply font-sans;
 }
+
+/* 基金产品列表样式 */
+.fund-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 20px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+.fund-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+  background: #db0011;
+  padding: 16px 24px;
+  border-radius: 6px;
+}
+
+.fund-title {
+  font-size: 28px;
+  font-weight: 600;
+  color: #fff;
+  margin: 0;
+}
+
+/* Tab 导航 */
+.fund-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #e8e8e8;
+  padding-bottom: 12px;
+}
+
+.fund-tab {
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  color: #666;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.fund-tab:hover {
+  background: #f5f5f5;
+  color: #333;
+}
+
+.fund-tab-active {
+  background: #1890ff;
+  color: #fff;
+}
+
+.fund-tab-active:hover {
+  background: #40a9ff;
+  color: #fff;
+}
+
+/* 搜索行 */
+.fund-search-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.fund-count {
+  color: #999;
+  font-size: 13px;
+}
+
+/* 表格行样式 */
+.fund-row-even {
+  background-color: #fafafa;
+}
+
+.fund-row-odd {
+  background-color: #fff;
+}
+
+/* 备注说明 */
+.fund-note {
+  margin-top: 16px;
+  font-size: 13px;
+  color: #999;
+  line-height: 1.8;
+}
+
+.fund-note p {
+  margin: 0;
+}
