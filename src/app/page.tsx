@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import ReactECharts from 'echarts-for-react'
 
 // 原始mock数据
 const mockData = {
@@ -352,29 +352,117 @@ export default function App() {
             <div className={`chart-tab ${currentChartType === 'income' ? 'active' : ''}`} onClick={()=>setCurrentChartType('income')}>收入指标趋势</div>
           </div>
           <div className="chart-wrapper">
-            <ResponsiveContainer width="100%" height="100%">
-              {currentChartType === 'rr' ? (
-                <BarChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3"/>
-                  <XAxis dataKey="name"/>
-                  <YAxis/>
-                  <Tooltip/>
-                  <Legend/>
-                  <Bar dataKey="rr" fill="var(--hsbc-red)" name="RR"/>
-                  <Bar dataKey="target" fill="var(--hsbc-gold)" name="目标"/>
-                </BarChart>
-              ) : (
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3"/>
-                  <XAxis dataKey="name"/>
-                  <YAxis/>
-                  <Tooltip/>
-                  <Legend/>
-                  <Line type="monotone" dataKey="income" stroke="var(--hsbc-red)" strokeWidth={2} name="收入"/>
-                  <Line type="monotone" dataKey="target" stroke="var(--hsbc-gold)" strokeWidth={2} name="目标"/>
-                </LineChart>
-              )}
-            </ResponsiveContainer>
+            {currentChartType === 'rr' ? (
+              <ReactECharts
+                option={{
+                  tooltip: {
+                    trigger: 'axis',
+                    axisPointer: { type: 'shadow' }
+                  },
+                  legend: {
+                    data: ['RR', '目标'],
+                    bottom: 0
+                  },
+                  grid: {
+                    left: '3%',
+                    right: '4%',
+                    bottom: '15%',
+                    top: '10%',
+                    containLabel: true
+                  },
+                  xAxis: {
+                    type: 'category',
+                    data: chartData.map(d => d.name),
+                    axisLine: { lineStyle: { color: '#ccc' } },
+                    axisLabel: { color: '#666' }
+                  },
+                  yAxis: {
+                    type: 'value',
+                    axisLine: { show: false },
+                    splitLine: { lineStyle: { color: '#eee', type: 'dashed' } },
+                    axisLabel: { color: '#666' }
+                  },
+                  series: [
+                    {
+                      name: 'RR',
+                      type: 'bar',
+                      data: chartData.map(d => d.rr),
+                      itemStyle: { color: '#d51e27', borderRadius: [4, 4, 0, 0] },
+                      barWidth: '40%'
+                    },
+                    {
+                      name: '目标',
+                      type: 'bar',
+                      data: chartData.map(d => d.target),
+                      itemStyle: { color: '#c5a055', borderRadius: [4, 4, 0, 0] },
+                      barWidth: '40%'
+                    }
+                  ]
+                }}
+                style={{ width: '100%', height: '100%' }}
+              />
+            ) : (
+              <ReactECharts
+                option={{
+                  tooltip: {
+                    trigger: 'axis'
+                  },
+                  legend: {
+                    data: ['收入', '目标'],
+                    bottom: 0
+                  },
+                  grid: {
+                    left: '3%',
+                    right: '4%',
+                    bottom: '15%',
+                    top: '10%',
+                    containLabel: true
+                  },
+                  xAxis: {
+                    type: 'category',
+                    data: chartData.map(d => d.name),
+                    boundaryGap: false,
+                    axisLine: { lineStyle: { color: '#ccc' } },
+                    axisLabel: { color: '#666' }
+                  },
+                  yAxis: {
+                    type: 'value',
+                    axisLine: { show: false },
+                    splitLine: { lineStyle: { color: '#eee', type: 'dashed' } },
+                    axisLabel: { color: '#666' }
+                  },
+                  series: [
+                    {
+                      name: '收入',
+                      type: 'line',
+                      data: chartData.map(d => d.income),
+                      smooth: true,
+                      lineStyle: { color: '#d51e27', width: 2 },
+                      itemStyle: { color: '#d51e27' },
+                      areaStyle: {
+                        color: {
+                          type: 'linear',
+                          x: 0, y: 0, x2: 0, y2: 1,
+                          colorStops: [
+                            { offset: 0, color: 'rgba(213, 30, 39, 0.3)' },
+                            { offset: 1, color: 'rgba(213, 30, 39, 0.05)' }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      name: '目标',
+                      type: 'line',
+                      data: chartData.map(d => d.target),
+                      smooth: true,
+                      lineStyle: { color: '#c5a055', width: 2, type: 'dashed' },
+                      itemStyle: { color: '#c5a055' }
+                    }
+                  ]
+                }}
+                style={{ width: '100%', height: '100%' }}
+              />
+            )}
           </div>
           <div style={{marginTop:'15px', textAlign:'center'}}>
             <div className="legend-item" style={{display:'inline-flex', alignItems:'center', marginRight:'15px'}}>
