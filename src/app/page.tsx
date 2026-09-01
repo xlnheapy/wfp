@@ -441,8 +441,8 @@ export default function App() {
                       yAxisIndex: 1,
                       data: chartData.map(d => d.completionRate),
                       smooth: true,
-                      lineStyle: { color: '#333', width: 2 },
-                      itemStyle: { color: '#333' },
+                      lineStyle: { color: '#d51e27', width: 2 },
+                      itemStyle: { color: '#d51e27' },
                       symbol: 'circle',
                       symbolSize: 6
                     }
