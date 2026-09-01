@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Select, DatePicker } from 'antd';
-import { TeamOutlined, CalendarOutlined } from '@ant-design/icons';
+import { CalendarOutlined, UserOutlined } from '@ant-design/icons';
 import type { Team, DateRange } from '@/types';
 import { DATE_RANGE_OPTIONS } from '@/services/mock-data';
 import dayjs from 'dayjs';
@@ -49,35 +49,50 @@ export default function Header({
   return (
     <header className="crm-header">
       <div className="crm-header-left">
-        <h1 className="crm-logo">CRM 管理系统</h1>
+        <div className="crm-logo-area">
+          <span className="crm-logo-icon">CRM</span>
+          <span className="crm-logo-text">客户关系管理系统</span>
+        </div>
       </div>
-      <div className="crm-header-center">
-        <div className="crm-selector-group">
-          <TeamOutlined className="crm-selector-icon" />
+      <div className="crm-header-right">
+        <div className="crm-header-selector">
+          <span className="crm-header-label">团队：</span>
           <Select
             value={selectedTeamId || ''}
             onChange={onTeamChange}
             options={teamOptions}
-            style={{ width: 160 }}
+            style={{ width: 140 }}
             placeholder="选择团队"
+            size="small"
+            variant="borderless"
+            popupMatchSelectWidth={false}
+            className="crm-header-select"
           />
         </div>
-      </div>
-      <div className="crm-header-right">
-        <div className="crm-selector-group">
-          <CalendarOutlined className="crm-selector-icon" />
+        <div className="crm-header-divider" />
+        <div className="crm-header-selector">
+          <CalendarOutlined style={{ color: 'rgba(255,255,255,0.85)', marginRight: 4 }} />
           <Select
             value={dateRange.label}
             onChange={handleDateRangeSelect}
-            style={{ width: 120 }}
+            style={{ width: 100 }}
             options={DATE_RANGE_OPTIONS.map(r => ({ value: r.label, label: r.label }))}
+            size="small"
+            variant="borderless"
+            popupMatchSelectWidth={false}
+            className="crm-header-select"
           />
           <RangePicker
             onChange={handleCustomDateChange}
-            style={{ marginLeft: 8 }}
+            style={{ marginLeft: 4 }}
             value={[dayjs(dateRange.start), dayjs(dateRange.end)]}
-            size="middle"
+            size="small"
           />
+        </div>
+        <div className="crm-header-divider" />
+        <div className="crm-header-user">
+          <UserOutlined style={{ color: 'rgba(255,255,255,0.85)' }} />
+          <span className="crm-header-username">管理员</span>
         </div>
       </div>
     </header>
