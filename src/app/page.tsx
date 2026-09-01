@@ -454,58 +454,89 @@ export default function App() {
               <ReactECharts
                 option={{
                   tooltip: {
-                    trigger: 'axis'
+                    trigger: 'axis',
+                    axisPointer: { type: 'shadow' },
+                    formatter: (params: any[]) => {
+                      let result = `<div style="font-weight:600;margin-bottom:4px">${params[0].name}</div>`;
+                      let total = 0;
+                      params.forEach((p: any) => {
+                        if (p.seriesName === '完成率') {
+                          result += `<div>${p.marker} ${p.seriesName}: <b>${p.value}%</b></div>`;
+                        } else {
+                          result += `<div>${p.marker} ${p.seriesName}: <b>¥${p.value.toLocaleString()}</b></div>`;
+                          total += p.value;
+                        }
+                      });
+                      result += `<div style="border-top:1px solid #eee;margin-top:4px;padding-top:4px">合计: <b>¥${total.toLocaleString()}</b></div>`;
+                      return result;
+                    }
                   },
                   legend: {
-                    data: ['收入', '目标'],
+                    data: ['首年FYC', '续保', '基金', '完成率'],
                     bottom: 0
                   },
                   grid: {
                     left: '3%',
-                    right: '4%',
-                    bottom: '15%',
+                    right: '8%',
+                    bottom: '18%',
                     top: '10%',
                     containLabel: true
                   },
                   xAxis: {
                     type: 'category',
                     data: chartData.map(d => d.name),
-                    boundaryGap: false,
                     axisLine: { lineStyle: { color: '#ccc' } },
                     axisLabel: { color: '#666' }
                   },
-                  yAxis: {
-                    type: 'value',
-                    axisLine: { show: false },
-                    splitLine: { lineStyle: { color: '#eee', type: 'dashed' } },
-                    axisLabel: { color: '#666' }
-                  },
+                  yAxis: [
+                    {
+                      type: 'value',
+                      name: '金额',
+                      axisLine: { show: false },
+                      splitLine: { lineStyle: { color: '#eee', type: 'dashed' } },
+                      axisLabel: { color: '#666' }
+                    },
+                    {
+                      type: 'value',
+                      name: '完成率',
+                      axisLine: { show: false },
+                      splitLine: { show: false },
+                      axisLabel: { color: '#666', formatter: '{value}%' }
+                    }
+                  ],
                   series: [
                     {
-                      name: '收入',
+                      name: '首年FYC',
+                      type: 'bar',
+                      stack: 'income',
+                      data: chartData.map(d => d.fyc),
+                      itemStyle: { color: '#d51e27' },
+                      barWidth: '40%'
+                    },
+                    {
+                      name: '续保',
+                      type: 'bar',
+                      stack: 'income',
+                      data: chartData.map(d => d.renewal),
+                      itemStyle: { color: '#c5a055' }
+                    },
+                    {
+                      name: '基金',
+                      type: 'bar',
+                      stack: 'income',
+                      data: chartData.map(d => d.fund),
+                      itemStyle: { color: '#e8dcc8', borderRadius: [4, 4, 0, 0] }
+                    },
+                    {
+                      name: '完成率',
                       type: 'line',
-                      data: chartData.map(d => d.income),
+                      yAxisIndex: 1,
+                      data: chartData.map(d => d.completionRate),
                       smooth: true,
                       lineStyle: { color: '#d51e27', width: 2 },
                       itemStyle: { color: '#d51e27' },
-                      areaStyle: {
-                        color: {
-                          type: 'linear',
-                          x: 0, y: 0, x2: 0, y2: 1,
-                          colorStops: [
-                            { offset: 0, color: 'rgba(213, 30, 39, 0.3)' },
-                            { offset: 1, color: 'rgba(213, 30, 39, 0.05)' }
-                          ]
-                        }
-                      }
-                    },
-                    {
-                      name: '目标',
-                      type: 'line',
-                      data: chartData.map(d => d.target),
-                      smooth: true,
-                      lineStyle: { color: '#c5a055', width: 2, type: 'dashed' },
-                      itemStyle: { color: '#c5a055' }
+                      symbol: 'circle',
+                      symbolSize: 6
                     }
                   ]
                 }}
