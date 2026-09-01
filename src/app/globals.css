@@ -515,6 +515,110 @@ body {
   border-radius: 8px;
 }
 
+/* ===== 诊断卡片 ===== */
+.crm-diagnosis-card {
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: none;
+  background: #fff;
+}
+
+.crm-diagnosis-card .ant-card-head {
+  border-bottom: 1px solid #f0f0f0;
+  min-height: 44px;
+  padding: 0 16px;
+}
+
+.crm-diagnosis-card .ant-card-head-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #333;
+  padding: 12px 0;
+}
+
+.crm-diagnosis-card .ant-card-extra {
+  padding: 12px 0;
+}
+
+.crm-diagnosis-card .ant-card-body {
+  padding: 16px;
+}
+
+/* 仪表盘容器 */
+.crm-gauge-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.crm-gauge-label {
+  font-size: 12px;
+  color: #666;
+  margin-top: -10px;
+}
+
+/* 指标详情 */
+.crm-metric-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.crm-metric-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.crm-metric-label {
+  font-size: 12px;
+  color: #999;
+}
+
+.crm-metric-value {
+  font-size: 22px;
+  font-weight: 600;
+  color: #333;
+}
+
+/* 指标分解 */
+.crm-metric-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #f5f5f5;
+}
+
+.crm-breakdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #666;
+}
+
+.crm-breakdown-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.crm-breakdown-value {
+  margin-left: auto;
+  font-weight: 500;
+  color: #333;
+}
+
+.crm-breakdown-percent {
+  font-size: 12px;
+  color: #999;
+  min-width: 36px;
+  text-align: right;
+}
+
 /* ===== Table overrides ===== */
 .crm-page .ant-table {
   border-radius: 8px;
