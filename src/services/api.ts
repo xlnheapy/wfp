@@ -7,9 +7,12 @@ const isDevelopment = process.env.NODE_ENV === 'development';
 
 // 非开发环境加载 Qlik 服务
 let qlikService: any = null;
+let qlikServicePromise: Promise<any> | null = null;
+
 if (!isDevelopment) {
-  import('./qlik-service').then(module => {
+  qlikServicePromise = import('./qlik-service').then(module => {
     qlikService = module;
+    return module;
   });
 }
 
@@ -30,12 +33,19 @@ function buildQueryString(params: QueryParams): string {
 
 async function fetchApi<T>(endpoint: string, params: QueryParams = {}): Promise<T> {
   // 1. 非开发环境使用 Qlik 服务
-  if (!isDevelopment && qlikService) {
-    const methodName = endpoint.replace('/', '').replace(/-([a-z])/g, (g) => g[1].toUpperCase());
-    const capitalized = methodName.charAt(0).toUpperCase() + methodName.slice(1);
-    const method = qlikService[`fetch${capitalized}`];
-    if (method) {
-      return method(params);
+  if (!isDevelopment) {
+    // 等待 Qlik 服务加载完成
+    if (qlikServicePromise && !qlikService) {
+      await qlikServicePromise;
+    }
+    
+    if (qlikService) {
+      const methodName = endpoint.replace('/', '').replace(/-([a-z])/g, (g) => g[1].toUpperCase());
+      const capitalized = methodName.charAt(0).toUpperCase() + methodName.slice(1);
+      const method = qlikService[`fetch${capitalized}`];
+      if (method) {
+        return method(params);
+      }
     }
   }
 
