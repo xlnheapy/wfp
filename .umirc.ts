@@ -10,6 +10,11 @@ export default defineConfig({
     'process.env.UMI_APP_QLIK_URL': process.env.UMI_APP_QLIK_URL || '',
     'process.env.UMI_APP_QLIK_APP_ID': process.env.UMI_APP_QLIK_APP_ID || '',
   },
+  // 生产构建配置
+  devtool: false,  // 禁用 source map
+  hash: true,      // 文件名加 hash
+  // 禁用 HMR（生产环境不需要）
+  fastRefresh: {},
   headScripts: [
     { content: `window.routerBase = '/';` },
   ],
