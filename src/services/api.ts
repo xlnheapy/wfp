@@ -1,21 +1,13 @@
 // API 服务层 - 根据环境自动切换数据源
 // 开发环境：使用 Mock 数据（通过 Umi mock）
-// Qlik Extension 环境：直接使用 Mock 数据（无后端服务器）
-// 生产环境：对接 Qlik Sense
-
-import * as mockData from './mock-data';
+// 生产环境/Qlik Extension：对接 Qlik Sense
 
 // 判断是否为开发环境（Umi dev server）
 const isDevelopment = process.env.NODE_ENV === 'development';
 
-// 判断是否在 Qlik Extension 环境（无后端服务器）
-const isQlikExtension = typeof window !== 'undefined' && 
-  (window.location.protocol === 'file:' || 
-   window.location.hostname === 'localhost' && !process.env.UMI_APP_QLIK_URL);
-
-// 非开发环境且配置了 Qlik 连接时使用 Qlik 服务
+// 非开发环境加载 Qlik 服务
 let qlikService: any = null;
-if (!isDevelopment && process.env.UMI_APP_QLIK_URL) {
+if (!isDevelopment) {
   import('./qlik-service').then(module => {
     qlikService = module;
   });
@@ -37,7 +29,7 @@ function buildQueryString(params: QueryParams): string {
 }
 
 async function fetchApi<T>(endpoint: string, params: QueryParams = {}): Promise<T> {
-  // 1. 优先使用 Qlik 服务（生产环境且配置了 Qlik 连接）
+  // 1. 非开发环境使用 Qlik 服务
   if (!isDevelopment && qlikService) {
     const methodName = endpoint.replace('/', '').replace(/-([a-z])/g, (g) => g[1].toUpperCase());
     const capitalized = methodName.charAt(0).toUpperCase() + methodName.slice(1);
@@ -47,17 +39,7 @@ async function fetchApi<T>(endpoint: string, params: QueryParams = {}): Promise<
     }
   }
 
-  // 2. Qlik Extension 环境或无后端服务器时，直接使用 Mock 数据
-  if (isQlikExtension || !isDevelopment) {
-    const methodName = endpoint.replace('/', '').replace(/-([a-z])/g, (g) => g[1].toUpperCase());
-    const capitalized = methodName.charAt(0).toUpperCase() + methodName.slice(1);
-    const method = mockData[`get${capitalized}` as keyof typeof mockData];
-    if (typeof method === 'function') {
-      return (method as Function)(params);
-    }
-  }
-
-  // 3. 开发环境使用 Umi Mock 服务器
+  // 2. 开发环境使用 Umi Mock 服务器
   const url = `/api${endpoint}${buildQueryString(params)}`;
   const res = await fetch(url);
   const json = await res.json();
