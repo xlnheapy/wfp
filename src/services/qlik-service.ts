@@ -90,7 +90,7 @@ async function executeHyperCube(
 
   const layout = await object.getLayout();
   const data = layout.qHyperCube?.qDataPages?.[0]?.qMatrix || [];
-  await object.destroySessionObject();
+  await app.destroySessionObject(object.id);
   return data;
 }
 
@@ -162,7 +162,7 @@ export async function fetchFmWfpList() {
     }
   }
 
-  await object.destroySessionObject();
+  await app.destroySessionObject(object.id);
 
   return { fms: Array.from(fmMap.values()) };
 }
