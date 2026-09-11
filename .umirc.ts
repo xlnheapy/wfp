@@ -13,8 +13,8 @@ export default defineConfig({
   // 生产构建配置
   devtool: false,  // 禁用 source map
   hash: true,      // 文件名加 hash
-  // 禁用 HMR（生产环境不需要）
-  fastRefresh: {},
+  // 启用 HMR（开发热更新）
+  fastRefresh: true,
   headScripts: [
     { content: `window.routerBase = '/';` },
   ],
