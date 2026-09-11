@@ -1,674 +1,338 @@
+// Qlik Sense 数据服务（生产环境使用）
 // ============================================================
-// Qlik Sense 对接服务（生产环境使用）
-// 说明：14 个接口全部「独立 + 原始写法」，不封装。
-//       每个接口自包含完整的 Qlik 调用流程：
-//       连接 → 打开应用 → 筛选 → 建查询对象 → 取数 → 销毁
-//       新手可直接复制单个接口去理解 / 修改。
+// 14 个接口各自独立查询。每个接口都返回【带 fm / wfp / 时间区间 维度】的全量数据，
+// 不在 Qlik 引擎端做筛选；筛选由页面根据所选 FM/WFP/时间区间在前端完成。
+//
+// 字段名说明：下方 FIELD_* 常量为占位字段名，请按 Qlik 应用中的实际字段/度量名修改。
 // ============================================================
-// @ts-ignore
-import enigma from 'enigma.js';
-// @ts-ignore
-import schema from 'enigma.js/schemas/12.612.0.json';
+import enigma from 'enigma.js'
+import schema from 'enigma.js/schemas/12.170.2.json'
 
-// ============ 配置（按实际环境修改） ============
-const QLIK_URL = process.env.UMI_APP_QLIK_URL || 'wss://你的qlik服务器地址';
-const APP_ID = process.env.UMI_APP_QLIK_APP_ID || '你的app-id';
+const QLIK_URL = (process.env.UMI_APP_QLIK_URL as string) || 'wss://your-qlik-server/app'
+const APP_ID = (process.env.UMI_APP_QLIK_APP_ID as string) || 'your-app-id'
 
-// 字段名（按实际 Qlik 数据模型调整）
-const FIELD = {
-  fmId: 'FM_ID',
-  fmName: 'FM_NAME',
-  wfpId: 'WFP_ID',
-  wfpName: 'WFP_NAME',
-  month: 'MONTH',
-};
+// 维度字段名（按实际 Qlik 应用调整）
+const FIELD_FM_ID = 'FM_ID'
+const FIELD_FM_NAME = 'FM_NAME'
+const FIELD_WFP_ID = 'WFP_ID'
+const FIELD_WFP_NAME = 'WFP_NAME'
+const FIELD_TIME_FILTER = 'TIME_FILTER' // 时间区间枚举字段，取值 current_month / last_month / current_quarter / last_quarter
+const FIELD_MONTH = 'MONTH'             // 趋势月份字段（yyyy-MM）
 
-// ============ 连接 Qlik（唯一公用的基础步骤，非业务封装） ============
-let qlikSession: any = null;
-async function connect(): Promise<any> {
-  if (qlikSession) return qlikSession;
-  const s = enigma.create({ schema, url: QLIK_URL });
-  qlikSession = await s.open();
-  return qlikSession;
+// 度量表达式（按实际 Qlik 应用调整）。均为"带维度行"的聚合，前端二次过滤求和。
+const M = {
+  rrTotal: 'Sum(RR_TOTAL)', rrTarget: 'Sum(RR_TARGET)', rrFyc: 'Sum(RR_FYC)',
+  rrRenewal: 'Sum(RR_RENEWAL)', rrFund: 'Sum(RR_FUND)', people70: 'Sum(PEOPLE_70)',
+  incFyc: 'Sum(INC_FYC)', incRenewal: 'Sum(INC_RENEWAL)', incFund: 'Sum(INC_FUND)',
+  ret13Renewed: 'Sum(RET13_RENEWED)', ret13Total: 'Sum(RET13_TOTAL)', ret13Count: 'Sum(RET13_COUNT)',
+  ret25Renewed: 'Sum(RET25_RENEWED)', ret25Total: 'Sum(RET25_TOTAL)', ret25Count: 'Sum(RET25_COUNT)',
+  calls: 'Sum(CALLS)', callsLong: 'Sum(CALLS_LONG)', meetings: 'Sum(MEETINGS)', newList: 'Sum(NEW_LIST)',
+  fundContacts: 'Sum(FUND_CONTACTS)', fundMeetings: 'Sum(FUND_MEETINGS)',
+  wechatAdd: 'Sum(WECHAT_ADD)', wechatInt: 'Sum(WECHAT_INT)',
+  newClients: 'Sum(NEW_CLIENTS)', newAUM: 'Sum(NEW_AUM)',
+  simplePolicies: 'Sum(SIMPLE_POLICIES)', complexPolicies: 'Sum(COMPLEX_POLICIES)',
+  newEvents: 'Sum(NEW_EVENTS)', newSelf: 'Sum(NEW_SELF)', newContacted: 'Sum(NEW_CONTACTED)',
+  newMeet: 'Sum(NEW_MEET)', newTotal: 'Sum(NEW_TOTAL)',
+  oldTotal: 'Sum(OLD_TOTAL)', oldCallList: 'Sum(OLD_CALL_LIST)', oldContacted: 'Sum(OLD_CONTACTED)', oldMeet: 'Sum(OLD_MEET)',
+  policyActive: 'Sum(POLICY_ACTIVE)', policyActiveAum: 'Sum(POLICY_ACTIVE_AUM)',
+  policyPending: 'Sum(POLICY_PENDING)', policyPendingAum: 'Sum(POLICY_PENDING_AUM)',
+  policyOrphan: 'Sum(POLICY_ORPHAN)', policyOrphanAum: 'Sum(POLICY_ORPHAN_AUM)',
+  fundHolding: 'Sum(FUND_HOLDING)', fundHoldingAum: 'Sum(FUND_HOLDING_AUM)',
+  fundHuikunbao: 'Sum(FUND_HUIKUNBAO)', fundHuikunbaoAum: 'Sum(FUND_HUIKUNBAO_AUM)',
+  fundNoIns: 'Sum(FUND_NO_INS)', fundNoInsAum: 'Sum(FUND_NO_INS_AUM)',
+  // 趋势月份点
+  rrMonthFyc: 'Sum(RR_FYC)', rrMonthRenewal: 'Sum(RR_RENEWAL)', rrMonthFund: 'Sum(RR_FUND)',
+  rrMonthTotal: 'Sum(RR_TOTAL)', rrMonthTarget: 'Sum(RR_TARGET)',
+  incMonthFyc: 'Sum(INC_FYC)', incMonthRenewal: 'Sum(INC_RENEWAL)', incMonthFund: 'Sum(INC_FUND)',
+  incMonthTotal: 'Sum(INC_TOTAL)', incMonthTarget: 'Sum(INC_TARGET)',
 }
 
-// ============ 应用筛选条件（按 FM / WFP / 时间 过滤） ============
-// opts 可关闭某个维度：趋势接口只需按 FM/WFP 过滤，不按时间
-async function applySelections(
+// ---------- 连接 ----------
+async function connect() {
+  const session = enigma.create({ schema, url: QLIK_URL })
+  const global = await session.open()
+  const app = await global.openDoc(APP_ID)
+  return { session, app }
+}
+
+// ---------- HyperCube 查询（多维度 + 多度量，返回数据矩阵）----------
+async function hyperCube(
   app: any,
-  params: { fm_id?: string; wfp_id?: string; time_filter?: string },
-  opts: { fm?: boolean; wfp?: boolean; time?: boolean } = { fm: true, wfp: true, time: true },
-) {
-  const rules: [string, string | undefined][] = [];
-  if (opts.fm) rules.push([FIELD.fmId, params.fm_id]);
-  if (opts.wfp) rules.push([FIELD.wfpId, params.wfp_id]);
-  if (opts.time) rules.push([FIELD.month, params.time_filter]);
-
-  for (const [field, value] of rules) {
-    if (value) {
-      try {
-        await app.field(field).selectValues([{ qText: value }], false, true);
-      } catch (e) {
-        // 字段不存在时忽略，不中断后续查询
-        console.warn(`Qlik 筛选字段 ${field} 失败（可忽略）:`, e);
-      }
-    }
-  }
-}
-
-// 把一次 HyperCube 查询完整跑一遍（含创建与销毁），并返回 qMatrix
-async function runHyperCube(app: any, dimensions: any[], measures: any[], height = 200, width = 10): Promise<any[][]> {
-  const object = await app.createSessionObject({
-    qInfo: { qType: 'visualization' },
+  dims: { field: string; label: string }[],
+  measures: { expr: string; label: string }[]
+): Promise<any[][]> {
+  const obj = await app.createSessionObject({
+    qInfo: { qType: 'custom-hypercube' },
     qHyperCubeDef: {
-      qDimensions: dimensions,
-      qMeasures: measures,
-      qInitialDataFetch: [{ qTop: 0, qLeft: 0, qHeight: height, qWidth: width }],
+      qDimensions: dims.map((d) => ({
+        qDef: { qFieldDefs: [d.field] },
+        qNullSuppression: true,
+      })),
+      qMeasures: measures.map((m) => ({
+        qDef: { qDef: m.expr, qLabel: m.label },
+      })),
+      qInitialDataFetch: [{ qLeft: 0, qTop: 0, qWidth: dims.length + measures.length, qHeight: 10000 }],
     },
-  });
+  })
+  const layout = await obj.getLayout()
+  try { await app.destroySessionObject(obj.id) } catch (e) { /* 忽略销毁异常 */ }
+  return layout?.qHyperCube?.qDataPages?.[0]?.qMatrix || []
+}
+
+const dim = (field: string, label: string) => ({ field, label })
+const mea = (expr: string, label: string) => ({ expr, label })
+const num = (v: any) => { const n = Number(v?.qNum ?? v?.qText); return Number.isFinite(n) ? n : 0 }
+const txt = (v: any) => (v?.qText != null ? String(v.qText) : '')
+
+// 三个枚举维度
+const ENUM_DIMS = [
+  dim(FIELD_FM_ID, 'fmId'), dim(FIELD_FM_NAME, 'fmName'),
+  dim(FIELD_WFP_ID, 'wfpId'), dim(FIELD_WFP_NAME, 'wfpName'),
+  dim(FIELD_TIME_FILTER, 'timeFilter'),
+]
+// 从矩阵行解析出维度公共字段
+function parseEnumRow(c: any[]) {
+  return {
+    fmId: txt(c[0]), fmName: txt(c[1]),
+    wfpId: txt(c[2]), wfpName: txt(c[3]),
+    timeFilter: txt(c[4]) as any,
+  }
+}
+
+// ============================================================
+// 14 个独立接口
+// ============================================================
+
+// 1. FM 和 WFP 列表（带时间区间维度）
+export async function getFmWfpList() {
+  const { session, app } = await connect()
   try {
-    const layout = await object.getLayout();
-    return layout.qHyperCube?.qDataPages?.[0]?.qMatrix || [];
+    const matrix = await hyperCube(app, ENUM_DIMS, [mea('Count({1} 1)', 'cnt')])
+    const rows = matrix.map((r) => {
+      const c = r.map((cell: any) => cell)
+      return {
+        fmId: txt(c[0]), fmName: txt(c[1]),
+        wfpId: txt(c[2]), wfpName: txt(c[3]),
+        timeFilter: txt(c[4]) as any,
+      }
+    })
+    return { rows }
   } finally {
-    try {
-      await app.destroySessionObject(object.id);
-    } catch (e) {
-      /* 销毁失败不影响返回 */
+    await session.close()
+  }
+}
+
+// 2. RR 指标
+export async function getRrMetrics() {
+  const { session, app } = await connect()
+  try {
+    const measures = [
+      mea(M.rrTotal, 'rrTotal'), mea(M.rrTarget, 'rrTarget'), mea(M.rrFyc, 'rrFyc'),
+      mea(M.rrRenewal, 'rrRenewal'), mea(M.rrFund, 'rrFund'), mea(M.people70, 'people70'),
+    ]
+    const matrix = await hyperCube(app, ENUM_DIMS, measures)
+    const rows = matrix.map((r) => ({
+      ...parseEnumRow(r),
+      rrTotal: num(r[5]), rrTarget: num(r[6]), rrFyc: num(r[7]),
+      rrRenewal: num(r[8]), rrFund: num(r[9]), people70: num(r[10]),
+    }))
+    return { rows }
+  } finally { await session.close() }
+}
+
+// 3. 收入指标
+export async function getIncomeMetrics() {
+  const { session, app } = await connect()
+  try {
+    const measures = [mea(M.incFyc, 'incFyc'), mea(M.incRenewal, 'incRenewal'), mea(M.incFund, 'incFund')]
+    const matrix = await hyperCube(app, ENUM_DIMS, measures)
+    const rows = matrix.map((r) => ({
+      ...parseEnumRow(r),
+      incFyc: num(r[5]), incRenewal: num(r[6]), incFund: num(r[7]),
+    }))
+    return { rows }
+  } finally { await session.close() }
+}
+
+// 4. 续保率指标
+export async function getRetentionMetrics() {
+  const { session, app } = await connect()
+  try {
+    const measures = [
+      mea(M.ret13Renewed, 'ret13Renewed'), mea(M.ret13Total, 'ret13Total'), mea(M.ret13Count, 'ret13Count'),
+      mea(M.ret25Renewed, 'ret25Renewed'), mea(M.ret25Total, 'ret25Total'), mea(M.ret25Count, 'ret25Count'),
+    ]
+    const matrix = await hyperCube(app, ENUM_DIMS, measures)
+    const rows = matrix.map((r) => ({
+      ...parseEnumRow(r),
+      ret13Renewed: num(r[5]), ret13Total: num(r[6]), ret13Count: num(r[7]),
+      ret25Renewed: num(r[8]), ret25Total: num(r[9]), ret25Count: num(r[10]),
+    }))
+    return { rows }
+  } finally { await session.close() }
+}
+
+// 趋势查询：维度 FM/WFP + MONTH，按 FM/WFP 归组成 12 个月序列
+async function queryTrend(app: any, measures: { expr: string; label: string }[], monthKeyPrefix: 'rr' | 'inc') {
+  const dims = [
+    dim(FIELD_FM_ID, 'fmId'), dim(FIELD_WFP_ID, 'wfpId'), dim(FIELD_WFP_NAME, 'wfpName'),
+    dim(FIELD_MONTH, 'month'),
+  ]
+  const matrix = await hyperCube(app, dims, measures)
+  // 归组：key = fm|wfp
+  const group = new Map<string, { fmId: string; wfpId: string; wfpName: string; months: any[] }>()
+  for (const r of matrix) {
+    const fmId = txt(r[0]), wfpId = txt(r[1]), wfpName = txt(r[2]), month = txt(r[3])
+    const key = `${fmId}|${wfpId}`
+    if (!group.has(key)) group.set(key, { fmId, wfpId, wfpName, months: [] })
+    const g = group.get(key)!
+    const base: any = { month, monthLabel: month }
+    if (monthKeyPrefix === 'rr') {
+      base.rrFyc = num(r[4]); base.rrRenewal = num(r[5]); base.rrFund = num(r[6])
+      base.rrTotal = num(r[7]); base.rrTarget = num(r[8])
+    } else {
+      base.incFyc = num(r[4]); base.incRenewal = num(r[5]); base.incFund = num(r[6])
+      base.incTotal = num(r[7]); base.incTarget = num(r[8])
     }
+    g.months.push(base)
   }
+  return Array.from(group.values())
 }
 
-// 一次 HyperCube 查询多个标量度量，返回数值数组（同一接口只查一次）
-async function queryValues(app: any, measures: string[]): Promise<number[]> {
-  if (measures.length === 0) return [];
-  const rows = await runHyperCube(
-    app,
-    [],
-    measures.map(e => ({ qDef: { qDef: e } })),
-    1,
-    measures.length,
-  );
-  if (!rows[0]) return measures.map(() => 0);
-  return measures.map((_, i) => rows[0][i]?.qNum || 0);
+// 5. RR 指标趋势
+export async function getRrTrend() {
+  const { session, app } = await connect()
+  try {
+    const measures = [
+      mea(M.rrMonthFyc, 'rrFyc'), mea(M.rrMonthRenewal, 'rrRenewal'), mea(M.rrMonthFund, 'rrFund'),
+      mea(M.rrMonthTotal, 'rrTotal'), mea(M.rrMonthTarget, 'rrTarget'),
+    ]
+    const rows = await queryTrend(app, measures, 'rr')
+    return { rows }
+  } finally { await session.close() }
 }
 
-// ============ 1. FM和WFP列表 ============
-export async function fetchFmWfpList() {
-  const session = await connect();
-  const app = await session.openDoc(APP_ID);
-
-  const data = await runHyperCube(
-    app,
-    [
-      { qDef: { qFieldDefs: [FIELD.fmId], qSortCriterias: [{ qSortByAscii: 1 }] } },
-      { qDef: { qFieldDefs: [FIELD.fmName], qSortCriterias: [{ qSortByAscii: 1 }] } },
-      { qDef: { qFieldDefs: [FIELD.wfpId], qSortCriterias: [{ qSortByAscii: 1 }] } },
-      { qDef: { qFieldDefs: [FIELD.wfpName], qSortCriterias: [{ qSortByAscii: 1 }] } },
-    ],
-    [], // 纯维度列表，无度量
-    1000,
-    4,
-  );
-
-  const fmMap = new Map<string, { id: string; name: string; wfps: { id: string; name: string }[] }>();
-  for (const row of data) {
-    const fmId = row[0]?.qText || '';
-    const fmName = row[1]?.qText || '';
-    const wfpId = row[2]?.qText || '';
-    const wfpName = row[3]?.qText || '';
-    if (!fmMap.has(fmId)) {
-      fmMap.set(fmId, { id: fmId, name: fmName, wfps: [] });
-    }
-    if (wfpId) fmMap.get(fmId)!.wfps.push({ id: wfpId, name: wfpName });
-  }
-
-  return { fms: Array.from(fmMap.values()) };
+// 6. 收入指标趋势
+export async function getIncomeTrend() {
+  const { session, app } = await connect()
+  try {
+    const measures = [
+      mea(M.incMonthFyc, 'incFyc'), mea(M.incMonthRenewal, 'incRenewal'), mea(M.incMonthFund, 'incFund'),
+      mea(M.incMonthTotal, 'incTotal'), mea(M.incMonthTarget, 'incTarget'),
+    ]
+    const rows = await queryTrend(app, measures, 'inc')
+    return { rows }
+  } finally { await session.close() }
 }
 
-// ============ 2. RR指标 ============
-export async function fetchRrMetrics(params: { fm_id?: string; wfp_id?: string; time_filter?: string }) {
-  const session = await connect();
-  const app = await session.openDoc(APP_ID);
-
-  await applySelections(app, params);
-
-  // 一次查询取全部指标
-  const [total, target, insuranceNew, insuranceRenew, fund, people70] = await queryValues(app, [
-    'Sum(RR_TOTAL)',
-    'Sum(RR_TARGET)',
-    'Sum(RR_FYC)',
-    'Sum(RR_RENEWAL)',
-    'Sum(RR_FUND)',
-    'Count(Distinct CUSTOMER_ID)',
-  ]);
-
-  const rate = target > 0 ? Number(((total / target) * 100).toFixed(1)) : 0;
-  return { total, target, rate, insuranceNew, insuranceRenew, fund, people70 };
+// 7. 活动跟踪
+export async function getActivity() {
+  const { session, app } = await connect()
+  try {
+    const measures = [
+      mea(M.calls, 'calls'), mea(M.callsLong, 'callsLong'), mea(M.meetings, 'meetings'), mea(M.newList, 'newList'),
+      mea(M.fundContacts, 'fundContacts'), mea(M.fundMeetings, 'fundMeetings'),
+      mea(M.wechatAdd, 'wechatAdd'), mea(M.wechatInt, 'wechatInt'),
+      mea(M.newClients, 'newClients'), mea(M.newAUM, 'newAUM'),
+      mea(M.simplePolicies, 'simplePolicies'), mea(M.complexPolicies, 'complexPolicies'),
+    ]
+    const matrix = await hyperCube(app, ENUM_DIMS, measures)
+    const rows = matrix.map((r) => ({
+      ...parseEnumRow(r),
+      calls: num(r[5]), callsLong: num(r[6]), meetings: num(r[7]), newList: num(r[8]),
+      fundContacts: num(r[9]), fundMeetings: num(r[10]), wechatAdd: num(r[11]), wechatInt: num(r[12]),
+      newClients: num(r[13]), newAUM: num(r[14]), simplePolicies: num(r[15]), complexPolicies: num(r[16]),
+    }))
+    return { rows }
+  } finally { await session.close() }
 }
 
-// ============ 3. 收入指标 ============
-export async function fetchIncomeMetrics(params: { fm_id?: string; wfp_id?: string; time_filter?: string }) {
-  const session = await connect();
-  const app = await session.openDoc(APP_ID);
-
-  await applySelections(app, params);
-
-  // 一次查询取全部指标
-  const [fyc, renewal, fundInc] = await queryValues(app, [
-    'Sum(INCOME_FYC)',
-    'Sum(INCOME_RENEWAL)',
-    'Sum(INCOME_FUND)',
-  ]);
-
-  const total = fyc + renewal + fundInc;
-  return {
-    total,
-    fyc,
-    renewal,
-    fundInc,
-    fycShare: total > 0 ? Number(((fyc / total) * 100).toFixed(1)) : 0,
-    renewalShare: total > 0 ? Number(((renewal / total) * 100).toFixed(1)) : 0,
-    fundShare: total > 0 ? Number(((fundInc / total) * 100).toFixed(1)) : 0,
-  };
+// 8. 新客运营
+export async function getNewCustomer() {
+  const { session, app } = await connect()
+  try {
+    const measures = [
+      mea(M.newEvents, 'newEvents'), mea(M.newSelf, 'newSelf'), mea(M.newContacted, 'newContacted'),
+      mea(M.newMeet, 'newMeet'), mea(M.newTotal, 'newTotal'),
+    ]
+    const matrix = await hyperCube(app, ENUM_DIMS, measures)
+    const rows = matrix.map((r) => ({
+      ...parseEnumRow(r),
+      newEvents: num(r[5]), newSelf: num(r[6]), newContacted: num(r[7]),
+      newMeet: num(r[8]), newTotal: num(r[9]),
+    }))
+    return { rows }
+  } finally { await session.close() }
 }
 
-// ============ 4. 续保率指标 ============
-export async function fetchRetentionMetrics(params: { fm_id?: string; wfp_id?: string; time_filter?: string }) {
-  const session = await connect();
-  const app = await session.openDoc(APP_ID);
-
-  await applySelections(app, params);
-
-  // 一次查询取 13/25 个月续保数与总数
-  const [renewed13, total13, renewed25, total25] = await queryValues(app, [
-    'Sum(RETENTION_13M_RENEWED)',
-    'Sum(RETENTION_13M_TOTAL)',
-    'Sum(RETENTION_25M_RENEWED)',
-    'Sum(RETENTION_25M_TOTAL)',
-  ]);
-
-  // 续保保单数（按维度数行数，各一次）
-  const c13 = await runHyperCube(app, [{ qDef: { qFieldDefs: ['RETENTION_13M_POLICY'] } }], [], 200, 1);
-  const c25 = await runHyperCube(app, [{ qDef: { qFieldDefs: ['RETENTION_25M_POLICY'] } }], [], 200, 1);
-
-  return {
-    anp13: total13 > 0 ? Number(((renewed13 / total13) * 100).toFixed(1)) : 0,
-    count13: c13.length,
-    anp25: total25 > 0 ? Number(((renewed25 / total25) * 100).toFixed(1)) : 0,
-    count25: c25.length,
-  };
+// 9. 老客运营汇总
+export async function getOldCustomerSummary() {
+  const { session, app } = await connect()
+  try {
+    const measures = [
+      mea(M.oldTotal, 'oldTotal'), mea(M.oldCallList, 'oldCallList'),
+      mea(M.oldContacted, 'oldContacted'), mea(M.oldMeet, 'oldMeet'),
+    ]
+    const matrix = await hyperCube(app, ENUM_DIMS, measures)
+    const rows = matrix.map((r) => ({
+      ...parseEnumRow(r),
+      oldTotal: num(r[5]), oldCallList: num(r[6]), oldContacted: num(r[7]), oldMeet: num(r[8]),
+    }))
+    return { rows }
+  } finally { await session.close() }
 }
 
-// ============ 5. RR指标趋势 ============
-export async function fetchRrTrend(params: { fm_id?: string; wfp_id?: string; time_filter?: string }) {
-  const session = await connect();
-  const app = await session.openDoc(APP_ID);
-
-  await applySelections(app, params, { time: false });
-
-  const data = await runHyperCube(
-    app,
-    [{ qDef: { qFieldDefs: [FIELD.month] } }],
-    [
-      { qDef: { qDef: 'Sum(RR_TOTAL)' }, qSortBy: { qSortByNumeric: 1 } },
-      { qDef: { qDef: 'Sum(RR_TARGET)' } },
-    ],
-    100,
-    2,
-  );
-
-  const months: string[] = [];
-  const rrValues: number[] = [];
-  const targetValues: number[] = [];
-  const completionRates: number[] = [];
-  for (const row of data) {
-    months.push(row[0]?.qText || '');
-    rrValues.push(row[1]?.qNum || 0);
-    targetValues.push(row[2]?.qNum || 0);
-    completionRates.push(
-      row[2]?.qNum && row[1]?.qNum ? Number(((row[1].qNum / row[2].qNum) * 100).toFixed(1)) : 0,
-    );
-  }
-
-  return { months, rrValues, targetValues, completionRates };
+// 10. 老客运营列表（前端按汇总行聚合分组，这里返回与汇总一致的带维度行）
+export async function getOldCustomerList() {
+  return getOldCustomerSummary()
 }
 
-// ============ 6. 收入指标趋势 ============
-export async function fetchIncomeTrend(params: { fm_id?: string; wfp_id?: string; time_filter?: string }) {
-  const session = await connect();
-  const app = await session.openDoc(APP_ID);
-
-  await applySelections(app, params, { time: false });
-
-  const data = await runHyperCube(
-    app,
-    [{ qDef: { qFieldDefs: [FIELD.month] } }],
-    [
-      { qDef: { qDef: 'Sum(INCOME_TOTAL)' } },
-      { qDef: { qDef: 'Sum(INCOME_TARGET)' } },
-    ],
-    100,
-    2,
-  );
-
-  const months: string[] = [];
-  const incomeValues: number[] = [];
-  const targetValues: number[] = [];
-  const completionRates: number[] = [];
-  for (const row of data) {
-    months.push(row[0]?.qText || '');
-    const income = row[1]?.qNum || 0;
-    const target = row[2]?.qNum || 0;
-    incomeValues.push(income);
-    targetValues.push(target);
-    completionRates.push(target > 0 ? Number(((income / target) * 100).toFixed(1)) : 0);
-  }
-
-  return { months, incomeValues, targetValues, completionRates };
+// 11. 保单跟踪汇总
+export async function getPolicySummary() {
+  const { session, app } = await connect()
+  try {
+    const measures = [
+      mea(M.policyActive, 'policyActive'), mea(M.policyActiveAum, 'policyActiveAum'),
+      mea(M.policyPending, 'policyPending'), mea(M.policyPendingAum, 'policyPendingAum'),
+      mea(M.policyOrphan, 'policyOrphan'), mea(M.policyOrphanAum, 'policyOrphanAum'),
+    ]
+    const matrix = await hyperCube(app, ENUM_DIMS, measures)
+    const rows = matrix.map((r) => ({
+      ...parseEnumRow(r),
+      policyActive: num(r[5]), policyActiveAum: num(r[6]),
+      policyPending: num(r[7]), policyPendingAum: num(r[8]),
+      policyOrphan: num(r[9]), policyOrphanAum: num(r[10]),
+    }))
+    return { rows }
+  } finally { await session.close() }
 }
 
-// ============ 7. 活动跟踪 ============
-export async function fetchActivity(params: { fm_id?: string; wfp_id?: string; time_filter?: string }) {
-  const session = await connect();
-  const app = await session.openDoc(APP_ID);
-
-  await applySelections(app, params);
-
-  // 联系数 / 活动总数 / 拜访数（一次查询）
-  const [contactedV, actTotalV, meetV] = await queryValues(app, [
-    'Sum(ACTIVITY_CONTACTED)',
-    'Sum(ACTIVITY_TOTAL)',
-    'Sum(ACTIVITY_MEET)',
-  ]);
-  const mtdContact = actTotalV > 0 ? Number(((contactedV / actTotalV) * 100).toFixed(1)) : 0;
-  const mtdMeet = actTotalV > 0 ? Number(((meetV / actTotalV) * 100).toFixed(1)) : 0;
-
-  // 活动类型分布
-  const activityData = await runHyperCube(
-    app,
-    [{ qDef: { qFieldDefs: ['ACTIVITY_TYPE'] } }],
-    [{ qDef: { qDef: 'Count(ACTIVITY_ID)' } }],
-    100,
-    1,
-  );
-  const maxCount = Math.max(...activityData.map((r: any) => r[1]?.qNum || 0));
-  const activities = activityData.map((row: any) => ({
-    type: row[0]?.qText || '',
-    count: row[1]?.qNum || 0,
-    rate: (row[1]?.qNum || 0) && maxCount ? Number((((row[1]?.qNum || 0) / maxCount) * 100).toFixed(1)) : 0,
-  }));
-
-  // 人员排行
-  const rankingData = await runHyperCube(
-    app,
-    [{ qDef: { qFieldDefs: [FIELD.wfpName] } }],
-    [{ qDef: { qDef: 'Count(ACTIVITY_ID)' } }],
-    100,
-    1,
-  );
-  const rankings = (rankingData as any[])
-    .map((row: any) => ({ name: row[0]?.qText || '', count: row[1]?.qNum || 0 }))
-    .sort((a: any, b: any) => b.count - a.count)
-    .slice(0, 10);
-
-  // 活动记录
-  const recordData = await runHyperCube(
-    app,
-    [{ qDef: { qFieldDefs: ['ACTIVITY_DATE'] } }],
-    [
-      { qDef: { qDef: 'MaxString(ACTIVITY_TYPE)' } },
-      { qDef: { qDef: 'MaxString(WFP_NAME)' } },
-      { qDef: { qDef: 'MaxString(ACTIVITY_RESULT)' } },
-      { qDef: { qDef: 'MaxString(ACTIVITY_NOTES)' } },
-    ],
-    100,
-    4,
-  );
-  const records = recordData.map((row: any) => ({
-    date: row[0]?.qText || '',
-    type: row[1]?.qText || '',
-    person: row[2]?.qText || '',
-    result: row[3]?.qText || '',
-    notes: row[4]?.qText || '',
-  }));
-
-  return { mtdContact, mtdMeet, activities, rankings, records };
+// 12. 保单跟踪列表（前端按汇总行聚合分组）
+export async function getPolicyList() {
+  return getPolicySummary()
 }
 
-// ============ 8. 新客运营 ============
-export async function fetchNewCustomer(params: { fm_id?: string; wfp_id?: string; time_filter?: string }) {
-  const session = await connect();
-  const app = await session.openDoc(APP_ID);
-
-  await applySelections(app, params);
-
-  // 活动获取 / 自拓（一次查询：维度=新客ID，度量=自拓标记）
-  const custRows = await runHyperCube(
-    app,
-    [{ qDef: { qFieldDefs: ['NEW_CUSTOMER_ID'] } }],
-    [{ qDef: { qDef: "Sum({<NEW_CUSTOMER_SOURCE={'self'}>}1)" } }],
-    200,
-    1,
-  );
-  const events = custRows.length;
-  const self = custRows.reduce((acc: number, r: any) => acc + (r[1]?.qNum || 0), 0);
-
-  // 联系数 / 拜访数 / 新客总数（一次查询）
-  const [contV, meetV, newTotalV] = await queryValues(app, [
-    'Sum(NEW_CUSTOMER_CONTACTED)',
-    'Sum(NEW_CUSTOMER_MEET)',
-    'Count(DISTINCT NEW_CUSTOMER_ID)',
-  ]);
-
-  // 新客列表
-  const leadData = await runHyperCube(
-    app,
-    [{ qDef: { qFieldDefs: ['NEW_CUSTOMER_NAME'] } }],
-    [
-      { qDef: { qDef: 'MaxString(NEW_CUSTOMER_SOURCE)' } },
-      { qDef: { qDef: 'MaxString(NEW_CUSTOMER_STATUS)' } },
-      { qDef: { qDef: 'MaxString(NEW_CUSTOMER_DATE)' } },
-    ],
-    200,
-    3,
-  );
-  const leads = leadData.map((row: any) => ({
-    name: row[0]?.qText || '',
-    source: row[1]?.qText || '',
-    status: row[2]?.qText || '',
-    date: row[3]?.qText || '',
-  }));
-
-  return {
-    events,
-    self,
-    contactRate: newTotalV > 0 ? Number(((contV / newTotalV) * 100).toFixed(1)) : 0,
-    meetRate: newTotalV > 0 ? Number(((meetV / newTotalV) * 100).toFixed(1)) : 0,
-    leads,
-  };
+// 13. 基金跟踪汇总
+export async function getFundSummary() {
+  const { session, app } = await connect()
+  try {
+    const measures = [
+      mea(M.fundHolding, 'fundHolding'), mea(M.fundHoldingAum, 'fundHoldingAum'),
+      mea(M.fundHuikunbao, 'fundHuikunbao'), mea(M.fundHuikunbaoAum, 'fundHuikunbaoAum'),
+      mea(M.fundNoIns, 'fundNoIns'), mea(M.fundNoInsAum, 'fundNoInsAum'),
+    ]
+    const matrix = await hyperCube(app, ENUM_DIMS, measures)
+    const rows = matrix.map((r) => ({
+      ...parseEnumRow(r),
+      fundHolding: num(r[5]), fundHoldingAum: num(r[6]),
+      fundHuikunbao: num(r[7]), fundHuikunbaoAum: num(r[8]),
+      fundNoIns: num(r[9]), fundNoInsAum: num(r[10]),
+    }))
+    return { rows }
+  } finally { await session.close() }
 }
 
-// ============ 9. 老客运营汇总 ============
-export async function fetchOldCustomerSummary(params: { fm_id?: string; wfp_id?: string; time_filter?: string }) {
-  const session = await connect();
-  const app = await session.openDoc(APP_ID);
-
-  await applySelections(app, params);
-
-  // 老客总数 / 邀约清单数（一次查询：维度=老客ID，度量=邀约标记）
-  const custRows = await runHyperCube(
-    app,
-    [{ qDef: { qFieldDefs: ['OLD_CUSTOMER_ID'] } }],
-    [{ qDef: { qDef: "Sum({<OLD_CUSTOMER_TYPE={'call_list'}>}1)" } }],
-    200,
-    1,
-  );
-  const total = custRows.length;
-  const callList = custRows.reduce((acc: number, r: any) => acc + (r[1]?.qNum || 0), 0);
-
-  // 联系数 / 拜访数 / 老客总数（一次查询）
-  const [contV, meetV, oldTotalV] = await queryValues(app, [
-    'Sum(OLD_CUSTOMER_CONTACTED)',
-    'Sum(OLD_CUSTOMER_MEET)',
-    'Count(DISTINCT OLD_CUSTOMER_ID)',
-  ]);
-
-  return {
-    total,
-    callList,
-    callListContactRate: oldTotalV > 0 ? Number(((contV / oldTotalV) * 100).toFixed(1)) : 0,
-    callListMeetRate: oldTotalV > 0 ? Number(((meetV / oldTotalV) * 100).toFixed(1)) : 0,
-  };
-}
-
-// ============ 10. 老客运营列表 ============
-export async function fetchOldCustomerList(params: { fm_id?: string; wfp_id?: string; time_filter?: string }) {
-  const session = await connect();
-  const app = await session.openDoc(APP_ID);
-
-  await applySelections(app, params);
-
-  const data = await runHyperCube(
-    app,
-    [{ qDef: { qFieldDefs: ['OLD_CUSTOMER_NAME'] } }],
-    [
-      { qDef: { qDef: 'MaxString(OLD_CUSTOMER_LEVEL)' } },
-      { qDef: { qDef: 'Sum(OLD_CUSTOMER_PREMIUM)' } },
-      { qDef: { qDef: 'MaxString(OLD_CUSTOMER_LAST_CONTACT)' } },
-      { qDef: { qDef: 'MaxString(OLD_CUSTOMER_STATUS)' } },
-    ],
-    200,
-    4,
-  );
-
-  return data.map((row: any) => ({
-    name: row[0]?.qText || '',
-    level: row[1]?.qText || '',
-    premium: row[2]?.qNum || 0,
-    lastContact: row[3]?.qText || '',
-    status: row[4]?.qText || '',
-  }));
-}
-
-// ============ 11. 保单跟踪汇总 ============
-export async function fetchPolicySummary(params: { fm_id?: string; wfp_id?: string; time_filter?: string }) {
-  const session = await connect();
-  const app = await session.openDoc(APP_ID);
-
-  await applySelections(app, params);
-
-  const a = await runHyperCube(app, [{ qDef: { qFieldDefs: ['POLICY_ACTIVE_ID'] } }], [], 200, 1);
-  const p = await runHyperCube(app, [{ qDef: { qFieldDefs: ['POLICY_PENDING_RENEW_ID'] } }], [], 200, 1);
-  const o = await runHyperCube(app, [{ qDef: { qFieldDefs: ['POLICY_ORPHAN_ID'] } }], [], 200, 1);
-
-  return { active: a.length, pendingRenew: p.length, orphan: o.length };
-}
-
-// ============ 12. 保单跟踪列表 ============
-export async function fetchPolicyList(params: { fm_id?: string; wfp_id?: string; time_filter?: string }) {
-  const session = await connect();
-  const app = await session.openDoc(APP_ID);
-
-  await applySelections(app, params);
-
-  const data = await runHyperCube(
-    app,
-    [{ qDef: { qFieldDefs: ['POLICY_NO'] } }],
-    [
-      { qDef: { qDef: 'MaxString(CUSTOMER_NAME)' } },
-      { qDef: { qDef: 'MaxString(POLICY_TYPE)' } },
-      { qDef: { qDef: 'Sum(POLICY_PREMIUM)' } },
-      { qDef: { qDef: 'MaxString(POLICY_EXPIRY_DATE)' } },
-      { qDef: { qDef: 'MaxString(POLICY_STATUS)' } },
-    ],
-    200,
-    5,
-  );
-
-  return data.map((row: any) => ({
-    policyNo: row[0]?.qText || '',
-    customer: row[1]?.qText || '',
-    type: row[2]?.qText || '',
-    premium: row[3]?.qNum || 0,
-    expiryDate: row[4]?.qText || '',
-    status: row[5]?.qText || '',
-  }));
-}
-
-// ============ 13. 基金跟踪汇总 ============
-export async function fetchFundSummary(params: { fm_id?: string; wfp_id?: string; time_filter?: string }) {
-  const session = await connect();
-  const app = await session.openDoc(APP_ID);
-
-  await applySelections(app, params);
-
-  const [holding, huikunbao, fundNoIns] = await queryValues(app, [
-    'Sum(FUND_HOLDING)',
-    'Sum(FUND_HUIKUNBAO)',
-    'Sum(FUND_NO_INS)',
-  ]);
-
-  return { holding, huikunbao, fundNoIns };
-}
-
-// ============ 14. 基金跟踪列表 ============
-export async function fetchFundList(params: { fm_id?: string; wfp_id?: string; time_filter?: string }) {
-  const session = await connect();
-  const app = await session.openDoc(APP_ID);
-
-  await applySelections(app, params);
-
-  const data = await runHyperCube(
-    app,
-    [{ qDef: { qFieldDefs: ['FUND_NAME'] } }],
-    [
-      { qDef: { qDef: 'MaxString(CUSTOMER_NAME)' } },
-      { qDef: { qDef: 'Sum(FUND_AMOUNT)' } },
-      { qDef: { qDef: 'MaxString(FUND_STATUS)' } },
-    ],
-    200,
-    3,
-  );
-
-  return data.map((row: any) => ({
-    fundName: row[0]?.qText || '',
-    customer: row[1]?.qText || '',
-    amount: row[2]?.qNum || 0,
-    status: row[3]?.qText || '',
-  }));
-}
-
-// ============================================================
-// 全量数据：页面首次打开时一次性查询，之后前端切换筛选不再请求接口。
-// 返回结构与 mock-data.getAllData 同构。不在此处做筛选，全量返回，过滤交给前端。
-// 时间区间 TIME_FILTER 与 FM_ID / WFP_ID 一样是枚举维度（等值匹配）。
-// ============================================================
-export async function getAllData() {
-  const session = await connect();
-  const app = await session.openDoc(APP_ID);
-
-  // 1. FM/WFP 列表
-  const fmData = await runHyperCube(
-    app,
-    [{ qDef: { qFieldDefs: ['FM_ID'] } }],
-    [{ qDef: { qDef: 'MaxString(FM_NAME)' } }],
-    100,
-    2,
-  );
-  const fms = [];
-  for (const row of fmData) {
-    const fmId = row[0]?.qText || '';
-    const fmName = row[1]?.qText || fmId;
-    const wfpData = await runHyperCube(
-      app,
-      [{ qDef: { qFieldDefs: ['WFP_ID'] } }],
-      [{ qDef: { qDef: 'MaxString(WFP_NAME)' } }],
-      500,
-      2,
-    );
-    fms.push({
-      id: fmId,
-      name: fmName,
-      wfps: wfpData.map((r: any) => ({ id: r[0]?.qText || '', name: r[1]?.qText || r[0]?.qText || '' })),
-    });
-  }
-
-  // 2. 指标全量：维度 FM_ID / WFP_ID / TIME_FILTER（时间区间是枚举字段，与 FM/WFP 一样等值过滤）
-  //    【字段名按实际 Qlik 应用调整】
-  const measureDefs = [
-    'Sum(RR_TOTAL)', 'Sum(RR_TARGET)', 'Sum(RR_FYC)', 'Sum(RR_RENEWAL)', 'Sum(RR_FUND)', 'Sum(PEOPLE_70)',
-    'Sum(INC_FYC)', 'Sum(INC_RENEWAL)', 'Sum(INC_FUND)',
-    'Sum(RET13_RENEWED)', 'Sum(RET13_TOTAL)', 'Sum(RET25_RENEWED)', 'Sum(RET25_TOTAL)', 'Count(RET13)', 'Count(RET25)',
-    'Sum(ACT_CALLS)', 'Sum(ACT_CALLS_LONG)', 'Sum(ACT_MEETINGS)', 'Sum(ACT_NEW_LIST)',
-    'Sum(ACT_FUND_CONTACTS)', 'Sum(ACT_FUND_MEETINGS)', 'Sum(ACT_WECHAT_ADD)', 'Sum(ACT_WECHAT_INT)',
-    'Sum(ACT_NEW_CLIENTS)', 'Sum(ACT_NEW_AUM)', 'Sum(ACT_SIMPLE_POLICIES)', 'Sum(ACT_COMPLEX_POLICIES)',
-    'Sum(NEW_EVENTS)', 'Sum(NEW_SELF)', 'Sum(NEW_CONTACTED)', 'Sum(NEW_MEET)', 'Sum(NEW_TOTAL)',
-    'Sum(OLD_TOTAL)', 'Sum(OLD_CALL_LIST)', 'Sum(OLD_CONTACTED)', 'Sum(OLD_MEET)',
-    'Sum(POL_ACTIVE)', 'Sum(POL_ACTIVE_AUM)', 'Sum(POL_PENDING)', 'Sum(POL_PENDING_AUM)',
-    'Sum(POL_ORPHAN)', 'Sum(POL_ORPHAN_AUM)',
-    'Sum(FUND_HOLDING)', 'Sum(FUND_HOLDING_AUM)', 'Sum(FUND_HUIKUNBAO)', 'Sum(FUND_HUIKUNBAO_AUM)',
-    'Sum(FUND_NO_INS)', 'Sum(FUND_NO_INS_AUM)',
-  ];
-  const cube = await runHyperCube(
-    app,
-    [
-      { qDef: { qFieldDefs: ['FM_ID'] } },
-      { qDef: { qFieldDefs: ['WFP_ID'] } },
-      { qDef: { qFieldDefs: ['TIME_FILTER'] } }, // 时间区间枚举：current_month/last_month/current_quarter/last_quarter
-    ],
-    measureDefs.map((d) => ({ qDef: { qDef: d } })),
-    5000,
-    measureDefs.length,
-  );
-
-  const num = (c: any) => (typeof c?.qNum === 'number' ? c.qNum : Number(c?.qText) || 0);
-  // 趋势单独按 MONTH 维度查询，下面按 (fmId,wfpId) 归到 trendMap
-  const trendMap = await fetchTrendMap(app);
-
-  const metrics = cube.map((row: any) => {
-    const fmId = row[0]?.qText || '';
-    const wfpId = row[1]?.qText || '';
-    const base = {
-      fmId, wfpId,
-      timeFilter: (row[2]?.qText || 'current_month') as string,
-      rrTotal: num(row[3]), rrTarget: num(row[4]), rrFyc: num(row[5]), rrRenewal: num(row[6]),
-      rrFund: num(row[7]), people70: num(row[8]),
-      incFyc: num(row[9]), incRenewal: num(row[10]), incFund: num(row[11]),
-      ret13Renewed: num(row[12]), ret13Total: num(row[13]), ret25Renewed: num(row[14]), ret25Total: num(row[15]),
-      ret13Count: num(row[16]), ret25Count: num(row[17]),
-      calls: num(row[18]), callsLong: num(row[19]), meetings: num(row[20]), newList: num(row[21]),
-      fundContacts: num(row[22]), fundMeetings: num(row[23]), wechatAdd: num(row[24]), wechatInt: num(row[25]),
-      newClients: num(row[26]), newAUM: num(row[27]), simplePolicies: num(row[28]), complexPolicies: num(row[29]),
-      newEvents: num(row[30]), newSelf: num(row[31]), newContacted: num(row[32]), newMeet: num(row[33]), newTotal: num(row[34]),
-      oldTotal: num(row[35]), oldCallList: num(row[36]), oldContacted: num(row[37]), oldMeet: num(row[38]),
-      policyActive: num(row[39]), policyActiveAum: num(row[40]), policyPending: num(row[41]), policyPendingAum: num(row[42]),
-      policyOrphan: num(row[43]), policyOrphanAum: num(row[44]),
-      fundHolding: num(row[45]), fundHoldingAum: num(row[46]),
-      fundHuikunbao: num(row[47]), fundHuikunbaoAum: num(row[48]),
-      fundNoIns: num(row[49]), fundNoInsAum: num(row[50]),
-    };
-    return { ...base, months: trendMap.get(`${fmId}__${wfpId}`) || [] };
-  });
-
-  const months: string[] = [];
-  trendMap.forEach((pts) => pts.forEach((p) => { if (p.month && !months.includes(p.month)) months.push(p.month); }));
-  months.sort();
-
-  await session.close();
-  return {
-    fms, metrics, months,
-    quarters: ['Q1', 'Q2', 'Q3', 'Q4'],
-    timeFilters: ['current_month', 'last_month', 'current_quarter', 'last_quarter'],
-  };
-}
-
-// 趋势：按 MONTH 维度查 RR 总量/目标、收入总量，归为 fmId__wfpId -> 月度点数组
-// 【字段名按实际 Qlik 应用调整】
-async function fetchTrendMap(app: any): Promise<Map<string, { month: string; rrTotal: number; rrTarget: number; incTotal: number }[]>> {
-  const defs = ['Sum(RR_TOTAL)', 'Sum(RR_TARGET)', 'Sum(INC_TOTAL)'];
-  const data = await runHyperCube(
-    app,
-    [
-      { qDef: { qFieldDefs: ['FM_ID'] } },
-      { qDef: { qFieldDefs: ['WFP_ID'] } },
-      { qDef: { qFieldDefs: ['MONTH'] } },
-    ],
-    defs.map((d) => ({ qDef: { qDef: d } })),
-    5000,
-    defs.length,
-  );
-  const num = (c: any) => (typeof c?.qNum === 'number' ? c.qNum : Number(c?.qText) || 0);
-  const map = new Map<string, { month: string; rrTotal: number; rrTarget: number; incTotal: number }[]>();
-  for (const row of data) {
-    const key = `${row[0]?.qText || ''}__${row[1]?.qText || ''}`;
-    const pt = {
-      month: row[2]?.qText || '',
-      rrTotal: num(row[3]),
-      rrTarget: num(row[4]),
-      incTotal: num(row[5]),
-    };
-    if (!map.has(key)) map.set(key, []);
-    map.get(key)!.push(pt);
-  }
-  return map;
+// 14. 基金跟踪列表（前端按汇总行聚合分组）
+export async function getFundList() {
+  return getFundSummary()
 }

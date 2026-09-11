@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react'
 import ReactECharts from 'echarts-for-react'
 import '@/global/global.css'
 import {
-  initData,
   fetchFmWfpList,
   fetchRrMetrics,
   fetchIncomeMetrics,
@@ -185,9 +184,10 @@ export default function App() {
     }
   }, [getQueryParams])
 
-  // 首次打开：一次性加载全量数据（所有 FM/WFP/月份），列表按当前时间区间过滤；之后筛选在前端过滤、不再请求接口
+  // 首次打开：并行拉取 14 个独立接口（均返回带 fm/wfp/时间区间 维度的全量数据）并缓存；
+  // 列表按当前时间区间过滤；之后切换 FM/WFP/时间区间全部在前端内存过滤，不再请求接口。
   useEffect(() => {
-    initData(currentTimeFilter).then(({ fms }) => {
+    fetchFmWfpList({ time_filter: currentTimeFilter }).then(({ fms }) => {
       setFmList(fms)
       if (fms.length > 0) {
         const firstWfp = fms[0].wfps?.[0]?.id || null

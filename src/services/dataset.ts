@@ -1,68 +1,44 @@
 /**
  * dataset.ts
- * 全量数据缓存 + 前端过滤聚合层
+ * 14 个接口各自返回带 fm/wfp/时间区间 维度的全量行；本模块负责：
+ *   1) 缓存各接口返回的行（由 api.ts 在首次加载时并行拉取并 setXxx 注入）
+ *   2) 按页面选择的 FM / WFP / 时间区间 在内存里过滤
+ *   3) 聚合成页面 index.tsx 所需的结构
  *
- * 工作机制：
- *   页面首次打开调用 initDataset() 一次性拉取全量数据（含所有 FM/WFP/月份），
- *   之后切换 FM / WFP / 时间区间，所有模块都在内存里过滤聚合，不再请求接口。
- *
- * 输出结构与页面 index.tsx 中各 interface 完全对齐（即原 mock 数据结构）。
+ * 切换 FM / WFP / 时间区间时不再次请求接口，全部走这里的内存过滤。
  */
-import type { MetricRow } from './mock-data'
+import type { MetricRow, FmWfpRow, TrendRow, TimeFilterKey } from './mock-data'
 
-// 全量数据集结构（mock-data.getAllData 与 qlik-service.getAllData 同构）
-export interface AllDataset {
-  fms: { id: string; name: string; wfps: { id: string; name: string }[] }[]
-  metrics: MetricRow[]
-  months: string[]
-  quarters: string[]
+type Params = { fm_id?: string; wfp_id?: string; time_filter?: string }
+
+// ---------- 各模块行缓存 ----------
+let fmWfpRows: FmWfpRow[] = []
+let metricRows: Record<string, MetricRow[]> = {} // 各指标/汇总模块共用结构
+let rrTrendRows: TrendRow[] = []
+let incomeTrendRows: TrendRow[] = []
+
+export function setFmWfpRows(rows: FmWfpRow[]): void { fmWfpRows = rows }
+export function setModuleRows(key: string, rows: MetricRow[]): void { metricRows[key] = rows }
+export function setRrTrendRows(rows: TrendRow[]): void { rrTrendRows = rows }
+export function setIncomeTrendRows(rows: TrendRow[]): void { incomeTrendRows = rows }
+
+export function resetDataset(): void {
+  fmWfpRows = []
+  metricRows = {}
+  rrTrendRows = []
+  incomeTrendRows = []
 }
 
-type DataSource = {
-  getAllData: () => Promise<AllDataset> | AllDataset
+// ---------- 过滤 ----------
+function normTime(tf?: string): TimeFilterKey {
+  return (tf as TimeFilterKey) || 'current_month'
 }
 
-// 数据源由 api.ts 按环境注入（生产=Qlik，开发/测试=Mock）
-let dataSource: DataSource | null = null
-let cached: AllDataset | null = null
-let loadingPromise: Promise<AllDataset> | null = null
-
-/** 由 api.ts 调用：注入当前环境的数据源 */
-export function setDataSource(ds: DataSource): void {
-  dataSource = ds
-  cached = null
-  loadingPromise = null
-}
-
-/** 首次打开页面调用一次：加载并缓存全量数据 */
-export async function initDataset(): Promise<AllDataset> {
-  if (cached) return cached
-  if (loadingPromise) return loadingPromise
-  if (!dataSource) throw new Error('数据源未初始化，请先调用 initData()')
-  loadingPromise = Promise.resolve(dataSource.getAllData())
-    .then((data) => {
-      cached = data
-      return data
-    })
-    .catch((err) => {
-      loadingPromise = null
-      throw err
-    })
-  return loadingPromise
-}
-
-// 时间区间枚举：与 fm_id / wfp_id 一样是数据行上的枚举字段，筛选做等值匹配
-// 页面可选：本月 / 上月 / 本季度 / 上季度
-function normTime(timeFilter: string | undefined): string {
-  return timeFilter || 'current_month'
-}
-
-/** 按 FM / WFP / 时间区间 过滤指标行（三个维度都是枚举值等值匹配） */
-function filterRows(params: { fm_id?: string; wfp_id?: string; time_filter?: string }): MetricRow[] {
-  const ds = cached
-  if (!ds) throw new Error('数据尚未加载，请先调用 initData()')
+/** 指标行：按 FM / WFP / 时间区间 三个枚举字段等值匹配 */
+function filterRows(key: string, params: Params): MetricRow[] {
+  const rows = metricRows[key] || []
   const tf = normTime(params.time_filter)
-  return ds.metrics.filter((r) => {
+  return rows.filter((r) => {
     if (params.fm_id && params.fm_id !== 'ALL' && r.fmId !== params.fm_id) return false
     if (params.wfp_id && params.wfp_id !== 'ALL' && r.wfpId !== params.wfp_id) return false
     if (r.timeFilter !== tf) return false
@@ -70,51 +46,49 @@ function filterRows(params: { fm_id?: string; wfp_id?: string; time_filter?: str
   })
 }
 
-// 数字求和（null 安全）
+/** 趋势行：只按 FM/WFP 过滤（趋势按月份展开，与时间区间枚举无关） */
+function filterTrend(rows: TrendRow[], params: Params): TrendRow[] {
+  return rows.filter((r) => {
+    if (params.fm_id && params.fm_id !== 'ALL' && r.fmId !== params.fm_id) return false
+    if (params.wfp_id && params.wfp_id !== 'ALL' && r.wfpId !== params.wfp_id) return false
+    return true
+  })
+}
+
+// ---------- 工具 ----------
 function sum(rows: MetricRow[], key: keyof MetricRow): number {
   return rows.reduce((acc, r) => acc + (Number(r[key]) || 0), 0)
 }
-function rate(num: number, den: number): number {
+function rateNum(num: number, den: number): number {
   return den ? Math.round((num / den) * 100) : 0
 }
-function share(part: number, total: number): string {
-  return total ? `${Math.round((part / total) * 100)}%` : '0%'
+function pct(a: number, b: number): string {
+  return b ? `${Math.round((a / b) * 100)}%` : '0%'
 }
 
-// ========== 1. FF/WFP 列表（按时间区间枚举过滤）==========
-// 只返回在所选时间区间内有数据的 FM/WFP（取缓存的名称信息，缺省按本月）
-export function getFmWfpListFromDataset(params?: { time_filter?: string }) {
-  const ds = cached
-  if (!ds) return { fms: [] }
+// ========== 1. FM/WFP 列表（按时间区间过滤）==========
+export function getFmWfpList(params?: Params): { fms: { id: string; name: string; wfps: { id: string; name: string }[] }[] } {
   const tf = normTime(params?.time_filter)
-  if (params?.time_filter === 'ALL') return { fms: ds.fms }
-  // 收集该时间区间枚举下出现过的 (fmId -> wfpId 集合)
-  const fmWfpMap = new Map<string, Set<string>>()
-  for (const r of ds.metrics) {
+  const map = new Map<string, { name: string; wfps: Map<string, string> }>()
+  for (const r of fmWfpRows) {
     if (r.timeFilter !== tf) continue
-    if (!fmWfpMap.has(r.fmId)) fmWfpMap.set(r.fmId, new Set())
-    fmWfpMap.get(r.fmId)!.add(r.wfpId)
+    if (!map.has(r.fmId)) map.set(r.fmId, { name: r.fmName, wfps: new Map() })
+    map.get(r.fmId)!.wfps.set(r.wfpId, r.wfpName)
   }
-  // 按 cached.fms 的结构与名称，只保留该时段有数据的 FM/WFP
-  const fms = ds.fms
-    .filter((fm) => fmWfpMap.has(fm.id))
-    .map((fm) => ({
-      id: fm.id,
-      name: fm.name,
-      wfps: fm.wfps.filter((w) => fmWfpMap.get(fm.id)!.has(w.id)),
-    }))
-    .filter((fm) => fm.wfps.length > 0)
+  const fms = Array.from(map.entries()).map(([id, v]) => ({
+    id, name: v.name,
+    wfps: Array.from(v.wfps.entries()).map(([wid, wname]) => ({ id: wid, name: wname })),
+  }))
   return { fms }
 }
 
 // ========== 2. RR 指标 ==========
-export function getRrMetricsFromDataset(params: any) {
-  const rows = filterRows(params)
+export function getRrMetrics(params: Params) {
+  const rows = filterRows('rr', params)
   const total = sum(rows, 'rrTotal')
   const target = sum(rows, 'rrTarget')
   return {
-    total,
-    target,
+    total, target,
     rate: target ? Math.round((total / target) * 1000) / 10 : 0,
     insuranceNew: sum(rows, 'rrFyc'),
     insuranceRenew: sum(rows, 'rrRenewal'),
@@ -124,172 +98,120 @@ export function getRrMetricsFromDataset(params: any) {
 }
 
 // ========== 3. 收入指标 ==========
-export function getIncomeMetricsFromDataset(params: any) {
-  const rows = filterRows(params)
+export function getIncomeMetrics(params: Params) {
+  const rows = filterRows('income', params)
   const fyc = sum(rows, 'incFyc')
   const renewal = sum(rows, 'incRenewal')
   const fundInc = sum(rows, 'incFund')
   const total = fyc + renewal + fundInc
   return {
-    total,
-    fyc,
-    fycShare: share(fyc, total),
-    renewal,
-    renewalShare: share(renewal, total),
-    fundInc,
-    fundShare: share(fundInc, total),
+    total, fyc, fycShare: pct(fyc, total),
+    renewal, renewalShare: pct(renewal, total),
+    fundInc, fundShare: pct(fundInc, total),
   }
 }
 
 // ========== 4. 续保率指标 ==========
-export function getRetentionMetricsFromDataset(params: any) {
-  const rows = filterRows(params)
-  const c13renewed = sum(rows, 'ret13Renewed')
-  const c13total = sum(rows, 'ret13Total')
-  const c25renewed = sum(rows, 'ret25Renewed')
-  const c25total = sum(rows, 'ret25Total')
+export function getRetentionMetrics(params: Params) {
+  const rows = filterRows('retention', params)
+  const c13Renewed = sum(rows, 'ret13Renewed'), c13Total = sum(rows, 'ret13Total')
+  const c25Renewed = sum(rows, 'ret25Renewed'), c25Total = sum(rows, 'ret25Total')
   return {
-    anp13: rate(c13renewed, c13total),
+    anp13: rateNum(c13Renewed, c13Total),
     count13: sum(rows, 'ret13Count'),
-    anp25: rate(c25renewed, c25total),
+    anp25: rateNum(c25Renewed, c25Total),
     count25: sum(rows, 'ret25Count'),
   }
 }
 
-// ========== 5. RR 指标趋势（按月份分组）==========
-// 趋势取行内 months 序列：按 FM/WFP 过滤（不按 timeFilter 限制），跨 WFP 时按月聚合
-export function getRrTrendFromDataset(params: any) {
-  const rows = filterTrendRows(params)
-  const months = cached!.months
-  const rrValues = months.map(
-    (m) => {
-      let total = 0
-      let target = 0
-      for (const r of rows) {
-        const pt = r.months.find((x) => x.month === m)
-        if (pt) { total += pt.rrTotal; target += pt.rrTarget }
-      }
-      return total
-    }
-  )
-  const target =
-    rows[0]?.months.find((x) => x.month === months[months.length - 1])?.rrTarget || 50000
-  return { months, rrValues, target }
+// ========== 5. RR 指标趋势 ==========
+export function getRrTrend(params: Params) {
+  const rows = filterTrend(rrTrendRows, params)
+  const months = MONTH_LABELS()
+  const rrValues = months.map((_, i) => rows.reduce((acc, r) => acc + (r.months[i]?.rrTotal || 0), 0))
+  const target = rows.reduce((acc, r) => acc + (r.months[r.months.length - 1]?.rrTarget || 0), 0) || 50000
+  return { months: months.map((_, i) => MONTH_KEYS()[i]), rrValues, target }
 }
 
-// ========== 6. 收入指标趋势（按月份分组）==========
-export function getIncomeTrendFromDataset(params: any) {
-  const rows = filterTrendRows(params)
-  const months = cached!.months
-  const incomeValues = months.map((m) => {
-    let total = 0
-    for (const r of rows) {
-      const pt = r.months.find((x) => x.month === m)
-      if (pt) total += pt.incTotal
-    }
-    return total
-  })
-  return { months, incomeValues, target: 50000 }
+// ========== 6. 收入指标趋势 ==========
+export function getIncomeTrend(params: Params) {
+  const rows = filterTrend(incomeTrendRows, params)
+  const months = MONTH_LABELS()
+  const incomeValues = months.map((_, i) => rows.reduce((acc, r) => acc + (r.months[i]?.incTotal || 0), 0))
+  const target = rows.reduce((acc, r) => acc + (r.months[r.months.length - 1]?.incTarget || 0), 0) || 50000
+  return { months: months.map((_, i) => MONTH_KEYS()[i]), incomeValues, target }
 }
 
-// 趋势行过滤：只按 FM/WFP（同一 FM/WFP 在每个 timeFilter 行都带相同 months，取一种即可去重）
-function filterTrendRows(params: { fm_id?: string; wfp_id?: string }): MetricRow[] {
-  const ds = cached
-  if (!ds) return []
-  return ds.metrics.filter((r) => {
-    if (r.timeFilter !== 'current_month') return false // 每个 FM/WFP 只取一行（months 序列相同）
-    if (params.fm_id && params.fm_id !== 'ALL' && r.fmId !== params.fm_id) return false
-    if (params.wfp_id && params.wfp_id !== 'ALL' && r.wfpId !== params.wfp_id) return false
-    return true
-  })
+// 趋势月份（取首个趋势行的月份序列）
+function MONTH_KEYS(): string[] {
+  const r = rrTrendRows[0] || incomeTrendRows[0]
+  return r ? r.months.map((m) => m.month) : []
+}
+function MONTH_LABELS(): string[] {
+  const r = rrTrendRows[0] || incomeTrendRows[0]
+  return r ? r.months.map((m) => m.monthLabel) : []
 }
 
-// ========== 7. 活动跟踪（扁平 12 字段）==========
-export function getActivityFromDataset(params: any) {
-  const rows = filterRows(params)
+// ========== 7. 活动跟踪 ==========
+export function getActivity(params: Params) {
+  const rows = filterRows('activity', params)
   return {
-    calls: sum(rows, 'calls'),
-    callsLong: sum(rows, 'callsLong'),
-    meetings: sum(rows, 'meetings'),
-    newList: sum(rows, 'newList'),
-    fundContacts: sum(rows, 'fundContacts'),
-    fundMeetings: sum(rows, 'fundMeetings'),
-    wechatAdd: sum(rows, 'wechatAdd'),
-    wechatInt: sum(rows, 'wechatInt'),
-    newClients: sum(rows, 'newClients'),
-    newAUM: sum(rows, 'newAUM'),
-    simplePolicies: sum(rows, 'simplePolicies'),
-    complexPolicies: sum(rows, 'complexPolicies'),
+    calls: sum(rows, 'calls'), callsLong: sum(rows, 'callsLong'),
+    meetings: sum(rows, 'meetings'), newList: sum(rows, 'newList'),
+    fundContacts: sum(rows, 'fundContacts'), fundMeetings: sum(rows, 'fundMeetings'),
+    wechatAdd: sum(rows, 'wechatAdd'), wechatInt: sum(rows, 'wechatInt'),
+    newClients: sum(rows, 'newClients'), newAUM: sum(rows, 'newAUM'),
+    simplePolicies: sum(rows, 'simplePolicies'), complexPolicies: sum(rows, 'complexPolicies'),
   }
 }
 
 // ========== 8. 新客运营 ==========
-export function getNewCustomerFromDataset(params: any) {
-  const rows = filterRows(params)
+export function getNewCustomer(params: Params) {
+  const rows = filterRows('newCustomer', params)
   const events = sum(rows, 'newEvents')
   const self = sum(rows, 'newSelf')
   const contacted = sum(rows, 'newContacted')
   const meet = sum(rows, 'newMeet')
   const total = sum(rows, 'newTotal')
-  const rateStr = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : '0%')
   return {
-    events: {
-      count: events, target: events * 2, rate: '100%',
-      mtdContact: `${contacted}`, mtdMeet: `${meet}`,
-    },
-    self: {
-      count: self, target: total, rate: rateStr(self, events),
-      mtdContact: `${contacted}`, mtdMeet: `${meet}`,
-    },
+    events: { count: events, target: events * 2, rate: '100%', mtdContact: `${contacted}`, mtdMeet: `${meet}` },
+    self: { count: self, target: total, rate: pct(self, events), mtdContact: `${contacted}`, mtdMeet: `${meet}` },
   }
 }
 
 // ========== 9. 老客运营汇总 ==========
-export function getOldCustomerSummaryFromDataset(params: any) {
-  const rows = filterRows(params)
+export function getOldCustomerSummary(params: Params) {
+  const rows = filterRows('oldSummary', params)
   const total = sum(rows, 'oldTotal')
   const callList = sum(rows, 'oldCallList')
   const contacted = sum(rows, 'oldContacted')
   const meet = sum(rows, 'oldMeet')
   return {
-    total,
-    callList,
-    callListContactRate: rateStr(contacted, callList),
-    callListMeetRate: rateStr(meet, callList),
+    total, callList,
+    callListContactRate: pct(contacted, callList),
+    callListMeetRate: pct(meet, callList),
   }
 }
 
 // ========== 10. 老客运营列表 ==========
-export function getOldCustomerListFromDataset(params: any) {
-  const rows = filterRows(params)
+export function getOldCustomerList(params: Params) {
+  const rows = filterRows('oldList', params)
   const total = sum(rows, 'oldTotal')
   const callList = sum(rows, 'oldCallList')
   const contacted = sum(rows, 'oldContacted')
   const meet = sum(rows, 'oldMeet')
   return {
     table: [
-      {
-        type: '已见面', count: meet, target: total,
-        mtdContact: `${contacted}`, mtdMeet: `${meet}`,
-        callList, callListContact: rateStr(contacted, callList), callListMeet: rateStr(meet, callList),
-      },
-      {
-        type: '已联系未见', count: Math.max(0, contacted - meet), target: total,
-        mtdContact: `${contacted}`, mtdMeet: `${meet}`,
-        callList, callListContact: rateStr(contacted, callList), callListMeet: rateStr(meet, callList),
-      },
-      {
-        type: '未联系', count: Math.max(0, callList - contacted), target: total,
-        mtdContact: `${contacted}`, mtdMeet: `${meet}`,
-        callList, callListContact: rateStr(contacted, callList), callListMeet: rateStr(meet, callList),
-      },
+      { type: '已见面', count: meet, target: total, mtdContact: `${contacted}`, mtdMeet: `${meet}`, callList, callListContact: pct(contacted, callList), callListMeet: pct(meet, callList) },
+      { type: '已联系未见', count: Math.max(0, contacted - meet), target: total, mtdContact: `${contacted}`, mtdMeet: `${meet}`, callList, callListContact: pct(contacted, callList), callListMeet: pct(meet, callList) },
+      { type: '未联系', count: Math.max(0, callList - contacted), target: total, mtdContact: `${contacted}`, mtdMeet: `${meet}`, callList, callListContact: pct(contacted, callList), callListMeet: pct(meet, callList) },
     ],
   }
 }
 
 // ========== 11. 保单跟踪汇总 ==========
-export function getPolicySummaryFromDataset(params: any) {
-  const rows = filterRows(params)
+export function getPolicySummary(params: Params) {
+  const rows = filterRows('policySummary', params)
   return {
     active: { count: sum(rows, 'policyActive'), aum: sum(rows, 'policyActiveAum') },
     pendingRenew: { count: sum(rows, 'policyPending'), aum: sum(rows, 'policyPendingAum') },
@@ -298,8 +220,8 @@ export function getPolicySummaryFromDataset(params: any) {
 }
 
 // ========== 12. 保单跟踪列表 ==========
-export function getPolicyListFromDataset(params: any) {
-  const rows = filterRows(params)
+export function getPolicyList(params: Params) {
+  const rows = filterRows('policyList', params)
   const pending = sum(rows, 'policyPending')
   const pendingAum = sum(rows, 'policyPendingAum')
   const orphan = sum(rows, 'policyOrphan')
@@ -316,8 +238,8 @@ export function getPolicyListFromDataset(params: any) {
 }
 
 // ========== 13. 基金跟踪汇总 ==========
-export function getFundSummaryFromDataset(params: any) {
-  const rows = filterRows(params)
+export function getFundSummary(params: Params) {
+  const rows = filterRows('fundSummary', params)
   return {
     holding: { count: sum(rows, 'fundHolding'), aum: sum(rows, 'fundHoldingAum') },
     huikunbao: { count: sum(rows, 'fundHuikunbao'), aum: sum(rows, 'fundHuikunbaoAum') },
@@ -326,8 +248,8 @@ export function getFundSummaryFromDataset(params: any) {
 }
 
 // ========== 14. 基金跟踪列表 ==========
-export function getFundListFromDataset(params: any) {
-  const rows = filterRows(params)
+export function getFundList(params: Params) {
+  const rows = filterRows('fundList', params)
   const holding = sum(rows, 'fundHolding')
   const huikunAum = sum(rows, 'fundHuikunbaoAum')
   const noInsAum = sum(rows, 'fundNoInsAum')
@@ -338,9 +260,4 @@ export function getFundListFromDataset(params: any) {
       { type: '申购（在途）', count: Math.floor(holding * 0.04), orderCount: 2, orderAmount: Math.floor(huikunAum * 0.03), priority: 'normal', suggestion: '确认份额' },
     ],
   }
-}
-
-// 内部百分比字符串工具
-function rateStr(a: number, b: number): string {
-  return b ? `${Math.round((a / b) * 100)}%` : '0%'
 }

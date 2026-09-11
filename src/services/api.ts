@@ -1,115 +1,159 @@
-/**
- * api.ts
- *
- * 数据访问策略（按环境区分，无 /api 封装）：
- *   - 生产环境（Qlik 部署，Extensions 纯静态环境）：直接从 Qlik 引擎加载
- *   - 开发/测试环境：直接使用 Mock 数据
- *
- * 调用机制（前端过滤，不再逐次请求接口）：
- *   页面首次打开时调用 initData()，一次性把【所有 FM/WFP/月份】的全量数据加载并缓存；
- *   之后切换 FM / WFP / 时间区间，都在前端内存里过滤聚合，不再发起请求。
- */
+// API 服务层
+// 14 个接口各自独立。数据源按环境切换：
+//   - 开发/测试环境(development/test)：使用本地 Mock
+//   - 生产环境(production，如 Qlik Extension)：对接 Qlik Sense（静态服务，无后端）
+//
+// 每个接口都返回【带 fm / wfp / 时间区间 维度】的全量数据，不在数据源侧筛选。
+// 首次打开页面时并行请求 14 个接口并缓存，之后切换 FM/WFP/时间区间全部走前端内存过滤，
+// 不再重复请求接口。
+
+import type { QueryParams } from './mock-data'
 import * as dataset from './dataset'
-import type { AllDataset } from './dataset'
 
-export interface QueryParams {
-  fm_id?: string
-  wfp_id?: string
-  time_filter?: string  // 'M' | 'Q' | 'Y'
-}
-
-// ---------- 数据源：按环境选择 ----------
-type DataSource = { getAllData: () => Promise<AllDataset> | AllDataset }
-
-let dataSource: DataSource
+// 按环境选择数据源。两个数据源暴露同名的 14 个方法，返回同构数据。
+let dataSource: any
 if (process.env.NODE_ENV === 'production') {
-  // 生产：Qlik 引擎（全量数据一次查询）
-  dataSource = require('./qlik-service') as DataSource
+  dataSource = require('./qlik-service')
 } else {
-  // 开发/测试：Mock 全量数据
-  dataSource = require('./mock-data') as DataSource
+  dataSource = require('./mock-data')
 }
 
-/**
- * 首次打开页面调用一次：加载全量数据并缓存
- * 返回按时间区间过滤后的 FM/WFP 列表，供顶部下拉框使用
- * @param timeFilter 时间区间（默认本月），决定列表展示哪些 FM/WFP
- */
-export async function initData(timeFilter?: string): Promise<{ fms: AllDataset['fms'] }> {
-  // 注入当前环境的数据源
-  dataset.setDataSource(dataSource)
-  await dataset.initDataset()
-  return dataset.getFmWfpListFromDataset({ time_filter: timeFilter || 'current_month' })
+// ---------- 首次加载：并行拉取 14 个接口并注入 dataset 缓存 ----------
+let loadedPromise: Promise<void> | null = null
+
+async function loadAll(): Promise<void> {
+  if (loadedPromise) return loadedPromise
+  loadedPromise = (async () => {
+    const ds = dataSource
+    const [
+      fmWfp, rr, income, retention, rrTrend, incomeTrend,
+      activity, newCustomer, oldSummary, oldList,
+      policySummary, policyList, fundSummary, fundList,
+    ] = await Promise.all([
+      ds.getFmWfpList(),
+      ds.getRrMetrics(),
+      ds.getIncomeMetrics(),
+      ds.getRetentionMetrics(),
+      ds.getRrTrend(),
+      ds.getIncomeTrend(),
+      ds.getActivity(),
+      ds.getNewCustomer(),
+      ds.getOldCustomerSummary(),
+      ds.getOldCustomerList(),
+      ds.getPolicySummary(),
+      ds.getPolicyList(),
+      ds.getFundSummary(),
+      ds.getFundList(),
+    ])
+
+    dataset.resetDataset()
+    dataset.setFmWfpRows(fmWfp.rows)
+    dataset.setModuleRows('rr', rr.rows)
+    dataset.setModuleRows('income', income.rows)
+    dataset.setModuleRows('retention', retention.rows)
+    dataset.setRrTrendRows(rrTrend.rows)
+    dataset.setIncomeTrendRows(incomeTrend.rows)
+    dataset.setModuleRows('activity', activity.rows)
+    dataset.setModuleRows('newCustomer', newCustomer.rows)
+    dataset.setModuleRows('oldSummary', oldSummary.rows)
+    dataset.setModuleRows('oldList', oldList.rows)
+    dataset.setModuleRows('policySummary', policySummary.rows)
+    dataset.setModuleRows('policyList', policyList.rows)
+    dataset.setModuleRows('fundSummary', fundSummary.rows)
+    dataset.setModuleRows('fundList', fundList.rows)
+  })()
+  return loadedPromise
 }
 
-// ---------- 以下函数都从缓存的全量数据里过滤聚合，不再请求接口 ----------
+// 确保已加载（页面首次调用）；之后筛选切换不再请求
+async function ensureLoaded(): Promise<void> {
+  await loadAll()
+}
 
-// 1. FF 和 WFP 列表（按时间区间过滤）
-export function fetchFmWfpList(params?: { time_filter?: string }): Promise<any> {
-  return Promise.resolve(dataset.getFmWfpListFromDataset(params))
+// ============================================================
+// 对外 14 个接口：首次触发加载，随后从内存聚合返回（不再请求）
+// ============================================================
+
+// 1. FF 和 WFP 列表（按时间区间枚举过滤）
+export async function fetchFmWfpList(params?: QueryParams) {
+  await ensureLoaded()
+  return dataset.getFmWfpList(params)
 }
 
 // 2. RR 指标
-export function fetchRrMetrics(params: QueryParams): Promise<any> {
-  return Promise.resolve(dataset.getRrMetricsFromDataset(params))
+export async function fetchRrMetrics(params: QueryParams) {
+  await ensureLoaded()
+  return dataset.getRrMetrics(params)
 }
 
 // 3. 收入指标
-export function fetchIncomeMetrics(params: QueryParams): Promise<any> {
-  return Promise.resolve(dataset.getIncomeMetricsFromDataset(params))
+export async function fetchIncomeMetrics(params: QueryParams) {
+  await ensureLoaded()
+  return dataset.getIncomeMetrics(params)
 }
 
 // 4. 续保率指标
-export function fetchRetentionMetrics(params: QueryParams): Promise<any> {
-  return Promise.resolve(dataset.getRetentionMetricsFromDataset(params))
+export async function fetchRetentionMetrics(params: QueryParams) {
+  await ensureLoaded()
+  return dataset.getRetentionMetrics(params)
 }
 
 // 5. RR 指标趋势
-export function fetchRrTrend(params: QueryParams): Promise<any> {
-  return Promise.resolve(dataset.getRrTrendFromDataset(params))
+export async function fetchRrTrend(params: QueryParams) {
+  await ensureLoaded()
+  return dataset.getRrTrend(params)
 }
 
 // 6. 收入指标趋势
-export function fetchIncomeTrend(params: QueryParams): Promise<any> {
-  return Promise.resolve(dataset.getIncomeTrendFromDataset(params))
+export async function fetchIncomeTrend(params: QueryParams) {
+  await ensureLoaded()
+  return dataset.getIncomeTrend(params)
 }
 
 // 7. 活动跟踪
-export function fetchActivity(params: QueryParams): Promise<any> {
-  return Promise.resolve(dataset.getActivityFromDataset(params))
+export async function fetchActivity(params: QueryParams) {
+  await ensureLoaded()
+  return dataset.getActivity(params)
 }
 
 // 8. 新客运营
-export function fetchNewCustomer(params: QueryParams): Promise<any> {
-  return Promise.resolve(dataset.getNewCustomerFromDataset(params))
+export async function fetchNewCustomer(params: QueryParams) {
+  await ensureLoaded()
+  return dataset.getNewCustomer(params)
 }
 
 // 9. 老客运营汇总
-export function fetchOldCustomerSummary(params: QueryParams): Promise<any> {
-  return Promise.resolve(dataset.getOldCustomerSummaryFromDataset(params))
+export async function fetchOldCustomerSummary(params: QueryParams) {
+  await ensureLoaded()
+  return dataset.getOldCustomerSummary(params)
 }
 
 // 10. 老客运营列表
-export function fetchOldCustomerList(params: QueryParams): Promise<any> {
-  return Promise.resolve(dataset.getOldCustomerListFromDataset(params))
+export async function fetchOldCustomerList(params: QueryParams) {
+  await ensureLoaded()
+  return dataset.getOldCustomerList(params)
 }
 
 // 11. 保单跟踪汇总
-export function fetchPolicySummary(params: QueryParams): Promise<any> {
-  return Promise.resolve(dataset.getPolicySummaryFromDataset(params))
+export async function fetchPolicySummary(params: QueryParams) {
+  await ensureLoaded()
+  return dataset.getPolicySummary(params)
 }
 
 // 12. 保单跟踪列表
-export function fetchPolicyList(params: QueryParams): Promise<any> {
-  return Promise.resolve(dataset.getPolicyListFromDataset(params))
+export async function fetchPolicyList(params: QueryParams) {
+  await ensureLoaded()
+  return dataset.getPolicyList(params)
 }
 
 // 13. 基金跟踪汇总
-export function fetchFundSummary(params: QueryParams): Promise<any> {
-  return Promise.resolve(dataset.getFundSummaryFromDataset(params))
+export async function fetchFundSummary(params: QueryParams) {
+  await ensureLoaded()
+  return dataset.getFundSummary(params)
 }
 
 // 14. 基金跟踪列表
-export function fetchFundList(params: QueryParams): Promise<any> {
-  return Promise.resolve(dataset.getFundListFromDataset(params))
+export async function fetchFundList(params: QueryParams) {
+  await ensureLoaded()
+  return dataset.getFundList(params)
 }
