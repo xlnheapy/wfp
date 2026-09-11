@@ -78,6 +78,20 @@ async function runHyperCube(app: any, dimensions: any[], measures: any[], height
   }
 }
 
+// 一次 HyperCube 查询多个标量度量，返回数值数组（同一接口只查一次）
+async function queryValues(app: any, measures: string[]): Promise<number[]> {
+  if (measures.length === 0) return [];
+  const rows = await runHyperCube(
+    app,
+    [],
+    measures.map(e => ({ qDef: { qDef: e } })),
+    1,
+    measures.length,
+  );
+  if (!rows[0]) return measures.map(() => 0);
+  return measures.map((_, i) => rows[0][i]?.qNum || 0);
+}
+
 // ============ 1. FM和WFP列表 ============
 export async function fetchFmWfpList() {
   const session = await connect();
@@ -118,24 +132,18 @@ export async function fetchRrMetrics(params: { fm_id?: string; wfp_id?: string; 
 
   await applySelections(app, params);
 
-  // 依次取各指标（每个都是独立的一次 HyperCube 查询）
-  const structs = [
-    ['total', 'Sum(RR_TOTAL)'],
-    ['target', 'Sum(RR_TARGET)'],
-    ['insuranceNew', 'Sum(RR_FYC)'],
-    ['insuranceRenew', 'Sum(RR_RENEWAL)'],
-    ['fund', 'Sum(RR_FUND)'],
-    ['people70', 'Count(Distinct CUSTOMER_ID)'],
-  ] as const;
+  // 一次查询取全部指标
+  const [total, target, insuranceNew, insuranceRenew, fund, people70] = await queryValues(app, [
+    'Sum(RR_TOTAL)',
+    'Sum(RR_TARGET)',
+    'Sum(RR_FYC)',
+    'Sum(RR_RENEWAL)',
+    'Sum(RR_FUND)',
+    'Count(Distinct CUSTOMER_ID)',
+  ]);
 
-  const out: any = {};
-  for (const [key, expr] of structs) {
-    const rows = await runHyperCube(app, [], [{ qDef: { qDef: expr } }], 1, 1);
-    out[key] = rows[0]?.[0]?.qNum || 0;
-  }
-
-  out.rate = out.target > 0 ? Number(((out.total / out.target) * 100).toFixed(1)) : 0;
-  return out;
+  const rate = target > 0 ? Number(((total / target) * 100).toFixed(1)) : 0;
+  return { total, target, rate, insuranceNew, insuranceRenew, fund, people70 };
 }
 
 // ============ 3. 收入指标 ============
@@ -145,23 +153,22 @@ export async function fetchIncomeMetrics(params: { fm_id?: string; wfp_id?: stri
 
   await applySelections(app, params);
 
-  const s = ['fyc', 'Sum(INCOME_FYC)'].concat(['renewal', 'Sum(INCOME_RENEWAL)'], ['fundInc', 'Sum(INCOME_FUND)']);
+  // 一次查询取全部指标
+  const [fyc, renewal, fundInc] = await queryValues(app, [
+    'Sum(INCOME_FYC)',
+    'Sum(INCOME_RENEWAL)',
+    'Sum(INCOME_FUND)',
+  ]);
 
-  const vals: any = {};
-  for (let i = 0; i < s.length; i += 2) {
-    const rows = await runHyperCube(app, [], [{ qDef: { qDef: s[i + 1] } }], 1, 1);
-    vals[s[i]] = rows[0]?.[0]?.qNum || 0;
-  }
-
-  const total = vals.fyc + vals.renewal + vals.fundInc;
+  const total = fyc + renewal + fundInc;
   return {
     total,
-    fyc: vals.fyc,
-    renewal: vals.renewal,
-    fundInc: vals.fundInc,
-    fycShare: total > 0 ? Number(((vals.fyc / total) * 100).toFixed(1)) : 0,
-    renewalShare: total > 0 ? Number(((vals.renewal / total) * 100).toFixed(1)) : 0,
-    fundShare: total > 0 ? Number(((vals.fundInc / total) * 100).toFixed(1)) : 0,
+    fyc,
+    renewal,
+    fundInc,
+    fycShare: total > 0 ? Number(((fyc / total) * 100).toFixed(1)) : 0,
+    renewalShare: total > 0 ? Number(((renewal / total) * 100).toFixed(1)) : 0,
+    fundShare: total > 0 ? Number(((fundInc / total) * 100).toFixed(1)) : 0,
   };
 }
 
@@ -172,26 +179,22 @@ export async function fetchRetentionMetrics(params: { fm_id?: string; wfp_id?: s
 
   await applySelections(app, params);
 
-  // 13 个月续保率 = 续保数 / 总数
-  const rr13 = await runHyperCube(app, [], [{ qDef: { qDef: 'Sum(RETENTION_13M_RENEWED)' } }], 1, 1);
-  const total13 = await runHyperCube(app, [], [{ qDef: { qDef: 'Sum(RETENTION_13M_TOTAL)' } }], 1, 1);
-  const anp13Val = rr13[0]?.[0]?.qNum || 0;
-  const total13Val = total13[0]?.[0]?.qNum || 0;
+  // 一次查询取 13/25 个月续保数与总数
+  const [renewed13, total13, renewed25, total25] = await queryValues(app, [
+    'Sum(RETENTION_13M_RENEWED)',
+    'Sum(RETENTION_13M_TOTAL)',
+    'Sum(RETENTION_25M_RENEWED)',
+    'Sum(RETENTION_25M_TOTAL)',
+  ]);
 
-  // 25 个月续保率
-  const rr25 = await runHyperCube(app, [], [{ qDef: { qDef: 'Sum(RETENTION_25M_RENEWED)' } }], 1, 1);
-  const total25 = await runHyperCube(app, [], [{ qDef: { qDef: 'Sum(RETENTION_25M_TOTAL)' } }], 1, 1);
-  const anp25Val = rr25[0]?.[0]?.qNum || 0;
-  const total25Val = total25[0]?.[0]?.qNum || 0;
-
-  // 续保保单数（按维度维度数行数）
+  // 续保保单数（按维度数行数，各一次）
   const c13 = await runHyperCube(app, [{ qDef: { qFieldDefs: ['RETENTION_13M_POLICY'] } }], [], 200, 1);
   const c25 = await runHyperCube(app, [{ qDef: { qFieldDefs: ['RETENTION_25M_POLICY'] } }], [], 200, 1);
 
   return {
-    anp13: total13Val > 0 ? Number(((anp13Val / total13Val) * 100).toFixed(1)) : 0,
+    anp13: total13 > 0 ? Number(((renewed13 / total13) * 100).toFixed(1)) : 0,
     count13: c13.length,
-    anp25: total25Val > 0 ? Number(((anp25Val / total25Val) * 100).toFixed(1)) : 0,
+    anp25: total25 > 0 ? Number(((renewed25 / total25) * 100).toFixed(1)) : 0,
     count25: c25.length,
   };
 }
@@ -271,13 +274,12 @@ export async function fetchActivity(params: { fm_id?: string; wfp_id?: string; t
 
   await applySelections(app, params);
 
-  // 联系率 / 拜访率
-  const contacted = await runHyperCube(app, [], [{ qDef: { qDef: 'Sum(ACTIVITY_CONTACTED)' } }], 1, 1);
-  const actTotal = await runHyperCube(app, [], [{ qDef: { qDef: 'Sum(ACTIVITY_TOTAL)' } }], 1, 1);
-  const meet = await runHyperCube(app, [], [{ qDef: { qDef: 'Sum(ACTIVITY_MEET)' } }], 1, 1);
-  const contactedV = contacted[0]?.[0]?.qNum || 0;
-  const actTotalV = actTotal[0]?.[0]?.qNum || 0;
-  const meetV = meet[0]?.[0]?.qNum || 0;
+  // 联系数 / 活动总数 / 拜访数（一次查询）
+  const [contactedV, actTotalV, meetV] = await queryValues(app, [
+    'Sum(ACTIVITY_CONTACTED)',
+    'Sum(ACTIVITY_TOTAL)',
+    'Sum(ACTIVITY_MEET)',
+  ]);
   const mtdContact = actTotalV > 0 ? Number(((contactedV / actTotalV) * 100).toFixed(1)) : 0;
   const mtdMeet = actTotalV > 0 ? Number(((meetV / actTotalV) * 100).toFixed(1)) : 0;
 
@@ -340,25 +342,23 @@ export async function fetchNewCustomer(params: { fm_id?: string; wfp_id?: string
 
   await applySelections(app, params);
 
-  // 活动获取 / 自拓
-  const evRows = await runHyperCube(app, [{ qDef: { qFieldDefs: ['NEW_CUSTOMER_ID'] } }], [], 200, 1);
-  const selfRows = await runHyperCube(
+  // 活动获取 / 自拓（一次查询：维度=新客ID，度量=自拓标记）
+  const custRows = await runHyperCube(
     app,
     [{ qDef: { qFieldDefs: ['NEW_CUSTOMER_ID'] } }],
     [{ qDef: { qDef: "Sum({<NEW_CUSTOMER_SOURCE={'self'}>}1)" } }],
     200,
     1,
   );
-  const events = evRows.length;
-  const self = selfRows.reduce((acc: number, r: any) => acc + (r[1]?.qNum || 0), 0);
+  const events = custRows.length;
+  const self = custRows.reduce((acc: number, r: any) => acc + (r[1]?.qNum || 0), 0);
 
-  // 联系率 / 拜访率
-  const cont = await runHyperCube(app, [], [{ qDef: { qDef: 'Sum(NEW_CUSTOMER_CONTACTED)' } }], 1, 1);
-  const meetCount = await runHyperCube(app, [], [{ qDef: { qDef: 'Sum(NEW_CUSTOMER_MEET)' } }], 1, 1);
-  const newTotal = await runHyperCube(app, [], [{ qDef: { qDef: 'Count(DISTINCT NEW_CUSTOMER_ID)' } }], 1, 1);
-  const contV = cont[0]?.[0]?.qNum || 0;
-  const meetV = meetCount[0]?.[0]?.qNum || 0;
-  const newTotalV = newTotal[0]?.[0]?.qNum || 0;
+  // 联系数 / 拜访数 / 新客总数（一次查询）
+  const [contV, meetV, newTotalV] = await queryValues(app, [
+    'Sum(NEW_CUSTOMER_CONTACTED)',
+    'Sum(NEW_CUSTOMER_MEET)',
+    'Count(DISTINCT NEW_CUSTOMER_ID)',
+  ]);
 
   // 新客列表
   const leadData = await runHyperCube(
@@ -395,23 +395,23 @@ export async function fetchOldCustomerSummary(params: { fm_id?: string; wfp_id?:
 
   await applySelections(app, params);
 
-  const totalRows = await runHyperCube(app, [{ qDef: { qFieldDefs: ['OLD_CUSTOMER_ID'] } }], [], 200, 1);
-  const callListRows = await runHyperCube(
+  // 老客总数 / 邀约清单数（一次查询：维度=老客ID，度量=邀约标记）
+  const custRows = await runHyperCube(
     app,
     [{ qDef: { qFieldDefs: ['OLD_CUSTOMER_ID'] } }],
     [{ qDef: { qDef: "Sum({<OLD_CUSTOMER_TYPE={'call_list'}>}1)" } }],
     200,
     1,
   );
-  const total = totalRows.length;
-  const callList = callListRows.reduce((acc: number, r: any) => acc + (r[1]?.qNum || 0), 0);
+  const total = custRows.length;
+  const callList = custRows.reduce((acc: number, r: any) => acc + (r[1]?.qNum || 0), 0);
 
-  const cont = await runHyperCube(app, [], [{ qDef: { qDef: 'Sum(OLD_CUSTOMER_CONTACTED)' } }], 1, 1);
-  const meet = await runHyperCube(app, [], [{ qDef: { qDef: 'Sum(OLD_CUSTOMER_MEET)' } }], 1, 1);
-  const oldTotal = await runHyperCube(app, [], [{ qDef: { qDef: 'Count(DISTINCT OLD_CUSTOMER_ID)' } }], 1, 1);
-  const contV = cont[0]?.[0]?.qNum || 0;
-  const meetV = meet[0]?.[0]?.qNum || 0;
-  const oldTotalV = oldTotal[0]?.[0]?.qNum || 0;
+  // 联系数 / 拜访数 / 老客总数（一次查询）
+  const [contV, meetV, oldTotalV] = await queryValues(app, [
+    'Sum(OLD_CUSTOMER_CONTACTED)',
+    'Sum(OLD_CUSTOMER_MEET)',
+    'Count(DISTINCT OLD_CUSTOMER_ID)',
+  ]);
 
   return {
     total,
@@ -502,15 +502,13 @@ export async function fetchFundSummary(params: { fm_id?: string; wfp_id?: string
 
   await applySelections(app, params);
 
-  const h = await runHyperCube(app, [], [{ qDef: { qDef: 'Sum(FUND_HOLDING)' } }], 1, 1);
-  const hk = await runHyperCube(app, [], [{ qDef: { qDef: 'Sum(FUND_HUIKUNBAO)' } }], 1, 1);
-  const ni = await runHyperCube(app, [], [{ qDef: { qDef: 'Sum(FUND_NO_INS)' } }], 1, 1);
+  const [holding, huikunbao, fundNoIns] = await queryValues(app, [
+    'Sum(FUND_HOLDING)',
+    'Sum(FUND_HUIKUNBAO)',
+    'Sum(FUND_NO_INS)',
+  ]);
 
-  return {
-    holding: h[0]?.[0]?.qNum || 0,
-    huikunbao: hk[0]?.[0]?.qNum || 0,
-    fundNoIns: ni[0]?.[0]?.qNum || 0,
-  };
+  return { holding, huikunbao, fundNoIns };
 }
 
 // ============ 14. 基金跟踪列表 ============
