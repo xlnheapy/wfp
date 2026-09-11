@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import ReactECharts from 'echarts-for-react'
 import '@/global/global.css'
 import {
-  fetchFmWfpList,
+  initData,
   fetchRrMetrics,
   fetchIncomeMetrics,
   fetchRetentionMetrics,
@@ -184,14 +184,16 @@ export default function App() {
     }
   }, [getQueryParams])
 
-  // 初始化加载 FM/WFP 列表
+  // 首次打开：一次性加载全量数据（所有 FM/WFP/月份），之后筛选在前端过滤、不再请求接口
   useEffect(() => {
-    fetchFmWfpList().then(data => {
-      setFmList(data.fms)
-      if (data.fms.length > 0) {
-        const firstWfp = data.fms[0].wfps?.[0]?.id || null
-        setCurrentSelection({ fmId: data.fms[0].id, wfpId: firstWfp })
+    initData().then(({ fms }) => {
+      setFmList(fms)
+      if (fms.length > 0) {
+        const firstWfp = fms[0].wfps?.[0]?.id || null
+        setCurrentSelection({ fmId: fms[0].id, wfpId: firstWfp })
       }
+    }).catch((err) => {
+      console.error('Failed to load full dataset:', err)
     })
   }, [])
 

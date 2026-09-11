@@ -1,97 +1,114 @@
-// API 服务层 - 根据环境自动切换数据源
-// 开发/测试环境：直接使用 Mock 数据（不封装 /api）
-// 生产环境/Qlik Extension：对接 Qlik Sense
+/**
+ * api.ts
+ *
+ * 数据访问策略（按环境区分，无 /api 封装）：
+ *   - 生产环境（Qlik 部署，Extensions 纯静态环境）：直接从 Qlik 引擎加载
+ *   - 开发/测试环境：直接使用 Mock 数据
+ *
+ * 调用机制（前端过滤，不再逐次请求接口）：
+ *   页面首次打开时调用 initData()，一次性把【所有 FM/WFP/月份】的全量数据加载并缓存；
+ *   之后切换 FM / WFP / 时间区间，都在前端内存里过滤聚合，不再发起请求。
+ */
+import * as dataset from './dataset'
+import type { AllDataset } from './dataset'
 
-import * as qlikService from './qlik-service';
-import * as mockData from './mock-data';
-
-// 判断环境
-const isDevelopment = process.env.NODE_ENV === 'development';
-const isTest = process.env.NODE_ENV === 'test';
-const isProduction = process.env.NODE_ENV === 'production';
-
-interface QueryParams {
-  fm_id?: string;
-  wfp_id?: string;
-  time_filter?: string;
+export interface QueryParams {
+  fm_id?: string
+  wfp_id?: string
+  time_filter?: string  // 'M' | 'Q' | 'Y'
 }
 
-async function fetchApi<T>(endpoint: string, params: QueryParams = {}): Promise<T> {
-  // 1. 生产环境/Qlik Extension：使用 Qlik 服务
-  if (isProduction) {
-    const methodName = endpoint.replace('/', '').replace(/-([a-z])/g, (g) => g[1].toUpperCase());
-    const capitalized = methodName.charAt(0).toUpperCase() + methodName.slice(1);
-    const method = (qlikService as any)[`fetch${capitalized}`];
-    if (method) {
-      return method(params);
-    }
-  }
+// ---------- 数据源：按环境选择 ----------
+type DataSource = { getAllData: () => Promise<AllDataset> | AllDataset }
 
-  // 2. 开发/测试环境：直接使用 Mock 数据（不封装 /api）
-  const methodName = endpoint.replace('/', '').replace(/-([a-z])/g, (g) => g[1].toUpperCase());
-  const capitalized = methodName.charAt(0).toUpperCase() + methodName.slice(1);
-  const method = (mockData as any)[`get${capitalized}`];
-  if (method) {
-    return method(params);
-  }
-
-  throw new Error(`Unknown endpoint: ${endpoint}`);
+let dataSource: DataSource
+if (process.env.NODE_ENV === 'production') {
+  // 生产：Qlik 引擎（全量数据一次查询）
+  dataSource = require('./qlik-service') as DataSource
+} else {
+  // 开发/测试：Mock 全量数据
+  dataSource = require('./mock-data') as DataSource
 }
 
-// ==================== API 方法 ====================
-
-export async function fetchFmWfpList() {
-  return fetchApi<{ fms: any[] }>('/fm-wfp-list');
+/**
+ * 首次打开页面调用一次：加载全量数据并缓存
+ * 返回 FM/WFP 列表，供顶部下拉框使用
+ */
+export async function initData(): Promise<{ fms: AllDataset['fms'] }> {
+  // 注入当前环境的数据源
+  dataset.setDataSource(dataSource)
+  const data = await dataset.initDataset()
+  return { fms: data.fms }
 }
 
-export async function fetchRrMetrics(params: QueryParams) {
-  return fetchApi<any>('/rr-metrics', params);
+// ---------- 以下函数都从缓存的全量数据里过滤聚合，不再请求接口 ----------
+
+// 1. FF 和 WFP 列表（不依赖筛选）
+export function fetchFmWfpList(): Promise<any> {
+  return Promise.resolve(dataset.getFmWfpListFromDataset())
 }
 
-export async function fetchIncomeMetrics(params: QueryParams) {
-  return fetchApi<any>('/income-metrics', params);
+// 2. RR 指标
+export function fetchRrMetrics(params: QueryParams): Promise<any> {
+  return Promise.resolve(dataset.getRrMetricsFromDataset(params))
 }
 
-export async function fetchRetentionMetrics(params: QueryParams) {
-  return fetchApi<any>('/retention-metrics', params);
+// 3. 收入指标
+export function fetchIncomeMetrics(params: QueryParams): Promise<any> {
+  return Promise.resolve(dataset.getIncomeMetricsFromDataset(params))
 }
 
-export async function fetchRrTrend(params: QueryParams) {
-  return fetchApi<any>('/rr-trend', params);
+// 4. 续保率指标
+export function fetchRetentionMetrics(params: QueryParams): Promise<any> {
+  return Promise.resolve(dataset.getRetentionMetricsFromDataset(params))
 }
 
-export async function fetchIncomeTrend(params: QueryParams) {
-  return fetchApi<any>('/income-trend', params);
+// 5. RR 指标趋势
+export function fetchRrTrend(params: QueryParams): Promise<any> {
+  return Promise.resolve(dataset.getRrTrendFromDataset(params))
 }
 
-export async function fetchActivity(params: QueryParams) {
-  return fetchApi<any>('/activity', params);
+// 6. 收入指标趋势
+export function fetchIncomeTrend(params: QueryParams): Promise<any> {
+  return Promise.resolve(dataset.getIncomeTrendFromDataset(params))
 }
 
-export async function fetchNewCustomer(params: QueryParams) {
-  return fetchApi<any>('/new-customer', params);
+// 7. 活动跟踪
+export function fetchActivity(params: QueryParams): Promise<any> {
+  return Promise.resolve(dataset.getActivityFromDataset(params))
 }
 
-export async function fetchOldCustomerSummary(params: QueryParams) {
-  return fetchApi<any>('/old-customer-summary', params);
+// 8. 新客运营
+export function fetchNewCustomer(params: QueryParams): Promise<any> {
+  return Promise.resolve(dataset.getNewCustomerFromDataset(params))
 }
 
-export async function fetchOldCustomerList(params: QueryParams) {
-  return fetchApi<any>('/old-customer-list', params);
+// 9. 老客运营汇总
+export function fetchOldCustomerSummary(params: QueryParams): Promise<any> {
+  return Promise.resolve(dataset.getOldCustomerSummaryFromDataset(params))
 }
 
-export async function fetchPolicySummary(params: QueryParams) {
-  return fetchApi<any>('/policy-summary', params);
+// 10. 老客运营列表
+export function fetchOldCustomerList(params: QueryParams): Promise<any> {
+  return Promise.resolve(dataset.getOldCustomerListFromDataset(params))
 }
 
-export async function fetchPolicyList(params: QueryParams) {
-  return fetchApi<any>('/policy-list', params);
+// 11. 保单跟踪汇总
+export function fetchPolicySummary(params: QueryParams): Promise<any> {
+  return Promise.resolve(dataset.getPolicySummaryFromDataset(params))
 }
 
-export async function fetchFundSummary(params: QueryParams) {
-  return fetchApi<any>('/fund-summary', params);
+// 12. 保单跟踪列表
+export function fetchPolicyList(params: QueryParams): Promise<any> {
+  return Promise.resolve(dataset.getPolicyListFromDataset(params))
 }
 
-export async function fetchFundList(params: QueryParams) {
-  return fetchApi<any>('/fund-list', params);
+// 13. 基金跟踪汇总
+export function fetchFundSummary(params: QueryParams): Promise<any> {
+  return Promise.resolve(dataset.getFundSummaryFromDataset(params))
+}
+
+// 14. 基金跟踪列表
+export function fetchFundList(params: QueryParams): Promise<any> {
+  return Promise.resolve(dataset.getFundListFromDataset(params))
 }
