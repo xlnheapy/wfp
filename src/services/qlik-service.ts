@@ -32,6 +32,30 @@ async function connect(): Promise<any> {
   return qlikSession;
 }
 
+// ============ 应用筛选条件（按 FM / WFP / 时间 过滤） ============
+// opts 可关闭某个维度：趋势接口只需按 FM/WFP 过滤，不按时间
+async function applySelections(
+  app: any,
+  params: { fm_id?: string; wfp_id?: string; time_filter?: string },
+  opts: { fm?: boolean; wfp?: boolean; time?: boolean } = { fm: true, wfp: true, time: true },
+) {
+  const rules: [string, string | undefined][] = [];
+  if (opts.fm) rules.push([FIELD.fmId, params.fm_id]);
+  if (opts.wfp) rules.push([FIELD.wfpId, params.wfp_id]);
+  if (opts.time) rules.push([FIELD.month, params.time_filter]);
+
+  for (const [field, value] of rules) {
+    if (value) {
+      try {
+        await app.field(field).selectValues([{ qText: value }], false, true);
+      } catch (e) {
+        // 字段不存在时忽略，不中断后续查询
+        console.warn(`Qlik 筛选字段 ${field} 失败（可忽略）:`, e);
+      }
+    }
+  }
+}
+
 // 把一次 HyperCube 查询完整跑一遍（含创建与销毁），并返回 qMatrix
 async function runHyperCube(app: any, dimensions: any[], measures: any[], height = 200, width = 10): Promise<any[][]> {
   const object = await app.createSessionObject({
@@ -92,20 +116,7 @@ export async function fetchRrMetrics(params: { fm_id?: string; wfp_id?: string; 
   const session = await connect();
   const app = await session.openDoc(APP_ID);
 
-  // 筛选（字段不存在时忽略，不中断）
-  for (const [field, value] of [
-    [FIELD.fmId, params.fm_id],
-    [FIELD.wfpId, params.wfp_id],
-    [FIELD.month, params.time_filter],
-  ]) {
-    if (value) {
-      try {
-        await app.field(field).selectValues([{ qText: value }], false, true);
-      } catch (e) {
-        /* ignore */
-      }
-    }
-  }
+  await applySelections(app, params);
 
   // 依次取各指标（每个都是独立的一次 HyperCube 查询）
   const structs = [
@@ -132,19 +143,7 @@ export async function fetchIncomeMetrics(params: { fm_id?: string; wfp_id?: stri
   const session = await connect();
   const app = await session.openDoc(APP_ID);
 
-  for (const [field, value] of [
-    [FIELD.fmId, params.fm_id],
-    [FIELD.wfpId, params.wfp_id],
-    [FIELD.month, params.time_filter],
-  ]) {
-    if (value) {
-      try {
-        await app.field(field).selectValues([{ qText: value }], false, true);
-      } catch (e) {
-        /* ignore */
-      }
-    }
-  }
+  await applySelections(app, params);
 
   const s = ['fyc', 'Sum(INCOME_FYC)'].concat(['renewal', 'Sum(INCOME_RENEWAL)'], ['fundInc', 'Sum(INCOME_FUND)']);
 
@@ -171,19 +170,7 @@ export async function fetchRetentionMetrics(params: { fm_id?: string; wfp_id?: s
   const session = await connect();
   const app = await session.openDoc(APP_ID);
 
-  for (const [field, value] of [
-    [FIELD.fmId, params.fm_id],
-    [FIELD.wfpId, params.wfp_id],
-    [FIELD.month, params.time_filter],
-  ]) {
-    if (value) {
-      try {
-        await app.field(field).selectValues([{ qText: value }], false, true);
-      } catch (e) {
-        /* ignore */
-      }
-    }
-  }
+  await applySelections(app, params);
 
   // 13 个月续保率 = 续保数 / 总数
   const rr13 = await runHyperCube(app, [], [{ qDef: { qDef: 'Sum(RETENTION_13M_RENEWED)' } }], 1, 1);
@@ -214,18 +201,7 @@ export async function fetchRrTrend(params: { fm_id?: string; wfp_id?: string; ti
   const session = await connect();
   const app = await session.openDoc(APP_ID);
 
-  for (const [field, value] of [
-    [FIELD.fmId, params.fm_id],
-    [FIELD.wfpId, params.wfp_id],
-  ]) {
-    if (value) {
-      try {
-        await app.field(field).selectValues([{ qText: value }], false, true);
-      } catch (e) {
-        /* ignore */
-      }
-    }
-  }
+  await applySelections(app, params, { time: false });
 
   const data = await runHyperCube(
     app,
@@ -259,18 +235,7 @@ export async function fetchIncomeTrend(params: { fm_id?: string; wfp_id?: string
   const session = await connect();
   const app = await session.openDoc(APP_ID);
 
-  for (const [field, value] of [
-    [FIELD.fmId, params.fm_id],
-    [FIELD.wfpId, params.wfp_id],
-  ]) {
-    if (value) {
-      try {
-        await app.field(field).selectValues([{ qText: value }], false, true);
-      } catch (e) {
-        /* ignore */
-      }
-    }
-  }
+  await applySelections(app, params, { time: false });
 
   const data = await runHyperCube(
     app,
@@ -304,19 +269,7 @@ export async function fetchActivity(params: { fm_id?: string; wfp_id?: string; t
   const session = await connect();
   const app = await session.openDoc(APP_ID);
 
-  for (const [field, value] of [
-    [FIELD.fmId, params.fm_id],
-    [FIELD.wfpId, params.wfp_id],
-    [FIELD.month, params.time_filter],
-  ]) {
-    if (value) {
-      try {
-        await app.field(field).selectValues([{ qText: value }], false, true);
-      } catch (e) {
-        /* ignore */
-      }
-    }
-  }
+  await applySelections(app, params);
 
   // 联系率 / 拜访率
   const contacted = await runHyperCube(app, [], [{ qDef: { qDef: 'Sum(ACTIVITY_CONTACTED)' } }], 1, 1);
@@ -385,19 +338,7 @@ export async function fetchNewCustomer(params: { fm_id?: string; wfp_id?: string
   const session = await connect();
   const app = await session.openDoc(APP_ID);
 
-  for (const [field, value] of [
-    [FIELD.fmId, params.fm_id],
-    [FIELD.wfpId, params.wfp_id],
-    [FIELD.month, params.time_filter],
-  ]) {
-    if (value) {
-      try {
-        await app.field(field).selectValues([{ qText: value }], false, true);
-      } catch (e) {
-        /* ignore */
-      }
-    }
-  }
+  await applySelections(app, params);
 
   // 活动获取 / 自拓
   const evRows = await runHyperCube(app, [{ qDef: { qFieldDefs: ['NEW_CUSTOMER_ID'] } }], [], 200, 1);
@@ -452,19 +393,7 @@ export async function fetchOldCustomerSummary(params: { fm_id?: string; wfp_id?:
   const session = await connect();
   const app = await session.openDoc(APP_ID);
 
-  for (const [field, value] of [
-    [FIELD.fmId, params.fm_id],
-    [FIELD.wfpId, params.wfp_id],
-    [FIELD.month, params.time_filter],
-  ]) {
-    if (value) {
-      try {
-        await app.field(field).selectValues([{ qText: value }], false, true);
-      } catch (e) {
-        /* ignore */
-      }
-    }
-  }
+  await applySelections(app, params);
 
   const totalRows = await runHyperCube(app, [{ qDef: { qFieldDefs: ['OLD_CUSTOMER_ID'] } }], [], 200, 1);
   const callListRows = await runHyperCube(
@@ -497,19 +426,7 @@ export async function fetchOldCustomerList(params: { fm_id?: string; wfp_id?: st
   const session = await connect();
   const app = await session.openDoc(APP_ID);
 
-  for (const [field, value] of [
-    [FIELD.fmId, params.fm_id],
-    [FIELD.wfpId, params.wfp_id],
-    [FIELD.month, params.time_filter],
-  ]) {
-    if (value) {
-      try {
-        await app.field(field).selectValues([{ qText: value }], false, true);
-      } catch (e) {
-        /* ignore */
-      }
-    }
-  }
+  await applySelections(app, params);
 
   const data = await runHyperCube(
     app,
@@ -538,19 +455,7 @@ export async function fetchPolicySummary(params: { fm_id?: string; wfp_id?: stri
   const session = await connect();
   const app = await session.openDoc(APP_ID);
 
-  for (const [field, value] of [
-    [FIELD.fmId, params.fm_id],
-    [FIELD.wfpId, params.wfp_id],
-    [FIELD.month, params.time_filter],
-  ]) {
-    if (value) {
-      try {
-        await app.field(field).selectValues([{ qText: value }], false, true);
-      } catch (e) {
-        /* ignore */
-      }
-    }
-  }
+  await applySelections(app, params);
 
   const a = await runHyperCube(app, [{ qDef: { qFieldDefs: ['POLICY_ACTIVE_ID'] } }], [], 200, 1);
   const p = await runHyperCube(app, [{ qDef: { qFieldDefs: ['POLICY_PENDING_RENEW_ID'] } }], [], 200, 1);
@@ -564,19 +469,7 @@ export async function fetchPolicyList(params: { fm_id?: string; wfp_id?: string;
   const session = await connect();
   const app = await session.openDoc(APP_ID);
 
-  for (const [field, value] of [
-    [FIELD.fmId, params.fm_id],
-    [FIELD.wfpId, params.wfp_id],
-    [FIELD.month, params.time_filter],
-  ]) {
-    if (value) {
-      try {
-        await app.field(field).selectValues([{ qText: value }], false, true);
-      } catch (e) {
-        /* ignore */
-      }
-    }
-  }
+  await applySelections(app, params);
 
   const data = await runHyperCube(
     app,
@@ -607,19 +500,7 @@ export async function fetchFundSummary(params: { fm_id?: string; wfp_id?: string
   const session = await connect();
   const app = await session.openDoc(APP_ID);
 
-  for (const [field, value] of [
-    [FIELD.fmId, params.fm_id],
-    [FIELD.wfpId, params.wfp_id],
-    [FIELD.month, params.time_filter],
-  ]) {
-    if (value) {
-      try {
-        await app.field(field).selectValues([{ qText: value }], false, true);
-      } catch (e) {
-        /* ignore */
-      }
-    }
-  }
+  await applySelections(app, params);
 
   const h = await runHyperCube(app, [], [{ qDef: { qDef: 'Sum(FUND_HOLDING)' } }], 1, 1);
   const hk = await runHyperCube(app, [], [{ qDef: { qDef: 'Sum(FUND_HUIKUNBAO)' } }], 1, 1);
@@ -637,19 +518,7 @@ export async function fetchFundList(params: { fm_id?: string; wfp_id?: string; t
   const session = await connect();
   const app = await session.openDoc(APP_ID);
 
-  for (const [field, value] of [
-    [FIELD.fmId, params.fm_id],
-    [FIELD.wfpId, params.wfp_id],
-    [FIELD.month, params.time_filter],
-  ]) {
-    if (value) {
-      try {
-        await app.field(field).selectValues([{ qText: value }], false, true);
-      } catch (e) {
-        /* ignore */
-      }
-    }
-  }
+  await applySelections(app, params);
 
   const data = await runHyperCube(
     app,
