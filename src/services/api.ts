@@ -32,20 +32,21 @@ if (process.env.NODE_ENV === 'production') {
 
 /**
  * 首次打开页面调用一次：加载全量数据并缓存
- * 返回 FM/WFP 列表，供顶部下拉框使用
+ * 返回按时间区间过滤后的 FM/WFP 列表，供顶部下拉框使用
+ * @param timeFilter 时间区间（默认本月），决定列表展示哪些 FM/WFP
  */
-export async function initData(): Promise<{ fms: AllDataset['fms'] }> {
+export async function initData(timeFilter?: string): Promise<{ fms: AllDataset['fms'] }> {
   // 注入当前环境的数据源
   dataset.setDataSource(dataSource)
-  const data = await dataset.initDataset()
-  return { fms: data.fms }
+  await dataset.initDataset()
+  return dataset.getFmWfpListFromDataset({ time_filter: timeFilter || 'current_month' })
 }
 
 // ---------- 以下函数都从缓存的全量数据里过滤聚合，不再请求接口 ----------
 
-// 1. FF 和 WFP 列表（不依赖筛选）
-export function fetchFmWfpList(): Promise<any> {
-  return Promise.resolve(dataset.getFmWfpListFromDataset())
+// 1. FF 和 WFP 列表（按时间区间过滤）
+export function fetchFmWfpList(params?: { time_filter?: string }): Promise<any> {
+  return Promise.resolve(dataset.getFmWfpListFromDataset(params))
 }
 
 // 2. RR 指标

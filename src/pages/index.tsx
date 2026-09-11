@@ -3,6 +3,7 @@ import ReactECharts from 'echarts-for-react'
 import '@/global/global.css'
 import {
   initData,
+  fetchFmWfpList,
   fetchRrMetrics,
   fetchIncomeMetrics,
   fetchRetentionMetrics,
@@ -184,9 +185,9 @@ export default function App() {
     }
   }, [getQueryParams])
 
-  // 首次打开：一次性加载全量数据（所有 FM/WFP/月份），之后筛选在前端过滤、不再请求接口
+  // 首次打开：一次性加载全量数据（所有 FM/WFP/月份），列表按当前时间区间过滤；之后筛选在前端过滤、不再请求接口
   useEffect(() => {
-    initData().then(({ fms }) => {
+    initData(currentTimeFilter).then(({ fms }) => {
       setFmList(fms)
       if (fms.length > 0) {
         const firstWfp = fms[0].wfps?.[0]?.id || null
@@ -195,6 +196,7 @@ export default function App() {
     }).catch((err) => {
       console.error('Failed to load full dataset:', err)
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // 当选择条件变化时重新加载数据
@@ -216,9 +218,17 @@ export default function App() {
     setCurrentSelection(prev=> ({...prev, wfpId}));
   }
 
-  // 时间筛选变更
+  // 时间筛选变更：切换时间后重新过滤 FM/WFP 列表并重置选择（数据聚合依赖 fmList.length 变化触发）
   const handleTimeFilterChange = (e: React.ChangeEvent<HTMLSelectElement>)=>{
-    setCurrentTimeFilter(e.target.value);
+    const tf = e.target.value;
+    setCurrentTimeFilter(tf);
+    fetchFmWfpList({ time_filter: tf }).then(({ fms }) => {
+      setFmList(fms)
+      if (fms.length > 0) {
+        const firstWfp = fms[0].wfps?.[0]?.id || null
+        setCurrentSelection({ fmId: fms[0].id, wfpId: firstWfp })
+      }
+    })
   }
 
   if(!rrMetrics || !incomeMetrics || !retentionMetrics || !activity || !newCustomer || !oldCustomerSummary || !policySummary || !fundSummary) return <div>Loading...</div>

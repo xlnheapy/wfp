@@ -101,9 +101,32 @@ function share(part: number, total: number): string {
   return total ? `${Math.round((part / total) * 100)}%` : '0%'
 }
 
-// ========== 1. FF/WFP 列表（不依赖筛选）==========
-export function getFmWfpListFromDataset() {
-  return { fms: cached ? cached.fms : [] }
+// ========== 1. FF/WFP 列表（按时间区间过滤）==========
+// 只返回在所选时间区间内有数据的 FM/WFP（取缓存的名称信息，缺省返回全部）
+export function getFmWfpListFromDataset(params?: { time_filter?: string }) {
+  const ds = cached
+  if (!ds) return { fms: [] }
+  if (!params?.time_filter || params.time_filter === 'ALL') {
+    return { fms: ds.fms }
+  }
+  const months = monthsForTime(params.time_filter, ds.months)
+  // 收集该时段内出现过的 (fmId -> wfpId 集合)
+  const fmWfpMap = new Map<string, Set<string>>()
+  for (const r of ds.metrics) {
+    if (!months.includes(r.month)) continue
+    if (!fmWfpMap.has(r.fmId)) fmWfpMap.set(r.fmId, new Set())
+    fmWfpMap.get(r.fmId)!.add(r.wfpId)
+  }
+  // 按 cached.fms 的结构与名称，只保留该时段有数据的 FM/WFP
+  const fms = ds.fms
+    .filter((fm) => fmWfpMap.has(fm.id))
+    .map((fm) => ({
+      id: fm.id,
+      name: fm.name,
+      wfps: fm.wfps.filter((w) => fmWfpMap.get(fm.id)!.has(w.id)),
+    }))
+    .filter((fm) => fm.wfps.length > 0)
+  return { fms }
 }
 
 // ========== 2. RR 指标 ==========
