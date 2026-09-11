@@ -539,9 +539,9 @@ export async function fetchFundList(params: { fm_id?: string; wfp_id?: string; t
 }
 
 // ============================================================
-// 全量数据：页面首次打开时一次性查询（FM × WFP × MONTH 三维度），
-// 之后前端切换筛选不再请求接口。返回结构与 mock-data.getAllData 同构。
-// 注意：不在此处做筛选，全量返回，过滤交给前端 dataset 层。
+// 全量数据：页面首次打开时一次性查询，之后前端切换筛选不再请求接口。
+// 返回结构与 mock-data.getAllData 同构。不在此处做筛选，全量返回，过滤交给前端。
+// 时间区间 TIME_FILTER 与 FM_ID / WFP_ID 一样是枚举维度（等值匹配）。
 // ============================================================
 export async function getAllData() {
   const session = await connect();
@@ -573,7 +573,8 @@ export async function getAllData() {
     });
   }
 
-  // 2. 指标全量：维度 FM_ID / WFP_ID / MONTH，度量为全部指标
+  // 2. 指标全量：维度 FM_ID / WFP_ID / TIME_FILTER（时间区间是枚举字段，与 FM/WFP 一样等值过滤）
+  //    【字段名按实际 Qlik 应用调整】
   const measureDefs = [
     'Sum(RR_TOTAL)', 'Sum(RR_TARGET)', 'Sum(RR_FYC)', 'Sum(RR_RENEWAL)', 'Sum(RR_FUND)', 'Sum(PEOPLE_70)',
     'Sum(INC_FYC)', 'Sum(INC_RENEWAL)', 'Sum(INC_FUND)',
@@ -593,7 +594,7 @@ export async function getAllData() {
     [
       { qDef: { qFieldDefs: ['FM_ID'] } },
       { qDef: { qFieldDefs: ['WFP_ID'] } },
-      { qDef: { qFieldDefs: ['MONTH'] } },
+      { qDef: { qFieldDefs: ['TIME_FILTER'] } }, // 时间区间枚举：current_month/last_month/current_quarter/last_quarter
     ],
     measureDefs.map((d) => ({ qDef: { qDef: d } })),
     5000,
@@ -601,31 +602,73 @@ export async function getAllData() {
   );
 
   const num = (c: any) => (typeof c?.qNum === 'number' ? c.qNum : Number(c?.qText) || 0);
-  const metrics = cube.map((row: any) => ({
-    fmId: row[0]?.qText || '',
-    wfpId: row[1]?.qText || '',
-    month: row[2]?.qText || '',
-    rrTotal: num(row[3]), rrTarget: num(row[4]), rrFyc: num(row[5]), rrRenewal: num(row[6]),
-    rrFund: num(row[7]), people70: num(row[8]),
-    incFyc: num(row[9]), incRenewal: num(row[10]), incFund: num(row[11]),
-    ret13Renewed: num(row[12]), ret13Total: num(row[13]), ret25Renewed: num(row[14]), ret25Total: num(row[15]),
-    ret13Count: num(row[16]), ret25Count: num(row[17]),
-    calls: num(row[18]), callsLong: num(row[19]), meetings: num(row[20]), newList: num(row[21]),
-    fundContacts: num(row[22]), fundMeetings: num(row[23]), wechatAdd: num(row[24]), wechatInt: num(row[25]),
-    newClients: num(row[26]), newAUM: num(row[27]), simplePolicies: num(row[28]), complexPolicies: num(row[29]),
-    newEvents: num(row[30]), newSelf: num(row[31]), newContacted: num(row[32]), newMeet: num(row[33]), newTotal: num(row[34]),
-    oldTotal: num(row[35]), oldCallList: num(row[36]), oldContacted: num(row[37]), oldMeet: num(row[38]),
-    policyActive: num(row[39]), policyActiveAum: num(row[40]), policyPending: num(row[41]), policyPendingAum: num(row[42]),
-    policyOrphan: num(row[43]), policyOrphanAum: num(row[44]),
-    fundHolding: num(row[45]), fundHoldingAum: num(row[46]),
-    fundHuikunbao: num(row[47]), fundHuikunbaoAum: num(row[48]),
-    fundNoIns: num(row[49]), fundNoInsAum: num(row[50]),
-  }));
+  // 趋势单独按 MONTH 维度查询，下面按 (fmId,wfpId) 归到 trendMap
+  const trendMap = await fetchTrendMap(app);
 
-  // 月份去重（保留顺序）
+  const metrics = cube.map((row: any) => {
+    const fmId = row[0]?.qText || '';
+    const wfpId = row[1]?.qText || '';
+    const base = {
+      fmId, wfpId,
+      timeFilter: (row[2]?.qText || 'current_month') as string,
+      rrTotal: num(row[3]), rrTarget: num(row[4]), rrFyc: num(row[5]), rrRenewal: num(row[6]),
+      rrFund: num(row[7]), people70: num(row[8]),
+      incFyc: num(row[9]), incRenewal: num(row[10]), incFund: num(row[11]),
+      ret13Renewed: num(row[12]), ret13Total: num(row[13]), ret25Renewed: num(row[14]), ret25Total: num(row[15]),
+      ret13Count: num(row[16]), ret25Count: num(row[17]),
+      calls: num(row[18]), callsLong: num(row[19]), meetings: num(row[20]), newList: num(row[21]),
+      fundContacts: num(row[22]), fundMeetings: num(row[23]), wechatAdd: num(row[24]), wechatInt: num(row[25]),
+      newClients: num(row[26]), newAUM: num(row[27]), simplePolicies: num(row[28]), complexPolicies: num(row[29]),
+      newEvents: num(row[30]), newSelf: num(row[31]), newContacted: num(row[32]), newMeet: num(row[33]), newTotal: num(row[34]),
+      oldTotal: num(row[35]), oldCallList: num(row[36]), oldContacted: num(row[37]), oldMeet: num(row[38]),
+      policyActive: num(row[39]), policyActiveAum: num(row[40]), policyPending: num(row[41]), policyPendingAum: num(row[42]),
+      policyOrphan: num(row[43]), policyOrphanAum: num(row[44]),
+      fundHolding: num(row[45]), fundHoldingAum: num(row[46]),
+      fundHuikunbao: num(row[47]), fundHuikunbaoAum: num(row[48]),
+      fundNoIns: num(row[49]), fundNoInsAum: num(row[50]),
+    };
+    return { ...base, months: trendMap.get(`${fmId}__${wfpId}`) || [] };
+  });
+
   const months: string[] = [];
-  metrics.forEach((m) => { if (m.month && !months.includes(m.month)) months.push(m.month); });
+  trendMap.forEach((pts) => pts.forEach((p) => { if (p.month && !months.includes(p.month)) months.push(p.month); }));
+  months.sort();
 
   await session.close();
-  return { fms, metrics, months, quarters: ['Q1', 'Q2', 'Q3', 'Q4'] };
+  return {
+    fms, metrics, months,
+    quarters: ['Q1', 'Q2', 'Q3', 'Q4'],
+    timeFilters: ['current_month', 'last_month', 'current_quarter', 'last_quarter'],
+  };
+}
+
+// 趋势：按 MONTH 维度查 RR 总量/目标、收入总量，归为 fmId__wfpId -> 月度点数组
+// 【字段名按实际 Qlik 应用调整】
+async function fetchTrendMap(app: any): Promise<Map<string, { month: string; rrTotal: number; rrTarget: number; incTotal: number }[]>> {
+  const defs = ['Sum(RR_TOTAL)', 'Sum(RR_TARGET)', 'Sum(INC_TOTAL)'];
+  const data = await runHyperCube(
+    app,
+    [
+      { qDef: { qFieldDefs: ['FM_ID'] } },
+      { qDef: { qFieldDefs: ['WFP_ID'] } },
+      { qDef: { qFieldDefs: ['MONTH'] } },
+    ],
+    defs.map((d) => ({ qDef: { qDef: d } })),
+    5000,
+    defs.length,
+  );
+  const num = (c: any) => (typeof c?.qNum === 'number' ? c.qNum : Number(c?.qText) || 0);
+  const map = new Map<string, { month: string; rrTotal: number; rrTarget: number; incTotal: number }[]>();
+  for (const row of data) {
+    const key = `${row[0]?.qText || ''}__${row[1]?.qText || ''}`;
+    const pt = {
+      month: row[2]?.qText || '',
+      rrTotal: num(row[3]),
+      rrTarget: num(row[4]),
+      incTotal: num(row[5]),
+    };
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(pt);
+  }
+  return map;
 }

@@ -235,11 +235,26 @@ export const ALL_MONTHS = ['1月', '2月', '3月', '4月', '5月', '6月']
 // 季度维度
 export const ALL_QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4']
 
-// 全量指标行：每个 FM/WFP/月份 一行
+// 时间区间枚举字段（与 fm_id / wfp_id 一样，是数据行上的一个枚举维度，等值过滤）
+export const TIME_FILTERS = ['current_month', 'last_month', 'current_quarter', 'last_quarter'] as const
+export type TimeFilterKey = (typeof TIME_FILTERS)[number]
+
+// 趋势用的月度点（RR指标趋势 / 收入指标趋势共用）
+export interface TrendMonth {
+  month: string
+  rrTotal: number
+  rrTarget: number
+  incTotal: number
+}
+
+// 全量指标行：每个 FM / WFP / 时间区间枚举 一行
+// timeFilter 是枚举字段，筛选时按等值匹配（和 fm_id、wfp_id 过滤方式一致）
 export interface MetricRow {
   fmId: string
   wfpId: string
-  month: string
+  timeFilter: TimeFilterKey
+  // 趋势（与 timeFilter 无关；同一 FM/WFP 在每个时间区间行中都带相同的 12 个月序列）
+  months: TrendMonth[]
   // RR 指标
   rrTotal: number
   rrTarget: number
@@ -294,72 +309,95 @@ function seedOf(...parts: (string | number)[]): number {
   for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) % 2147483647
   return h + 1
 }
-function rnd(group: string, wfp: string, month: string, field: string, min: number, max: number): number {
-  const v = seededRand(seedOf(group, wfp, month, field))
+function rnd(group: string, wfp: string, tf: string, field: string, min: number, max: number): number {
+  const v = seededRand(seedOf(group, wfp, tf, field))
   return Math.floor(min + v * (max - min))
 }
 
-// 生成全部指标行（FM × WFP × 月份）
+// 生成某个 FM/WFP 的 12 个月趋势（RR 与收入共用）
+function buildTrendMonths(fmId: string, wfpId: string): TrendMonth[] {
+  return ALL_MONTHS.map((month, i) => {
+    // 随月份平滑波动
+    const base = 55000 + Math.sin(i / 2) * 12000 + rnd(fmId, wfpId, 'trend', month, 0, 20000)
+    const rrTotal = Math.floor(base)
+    const rrTarget = 50000
+    const incTotal = Math.floor(rrTotal * 0.8)
+    return { month, rrTotal, rrTarget, incTotal }
+  })
+}
+
+// 生成全部指标行（FM × WFP × 时间区间枚举）
 function buildMetricRows(fms: { id: string; wfps: { id: string }[] }[]): MetricRow[] {
   const rows: MetricRow[] = []
   for (const fm of fms) {
     for (const wfp of fm.wfps) {
-      for (const month of ALL_MONTHS) {
-        const rrTotal = rnd(fm.id, wfp.id, month, 'rrTotal', 40000, 90000)
-        const rrTarget = 50000
+      // 趋势序列：同一 FM/WFP 只生成一次，挂到每个时间区间行上
+      const months = buildTrendMonths(fm.id, wfp.id)
+      for (const tf of TIME_FILTERS) {
+        const isQuarter = tf.endsWith('quarter')
+        const scale = isQuarter ? 3 : 1 // 季度窗口量级约为单月的 3 倍
+        const key = tf
+        const rrTotal = rnd(fm.id, wfp.id, key, 'rrTotal', 40000 * scale, 90000 * scale)
+        const rrTarget = 50000 * scale
         const incTotal = Math.floor(rrTotal * 0.8)
+        // 续保率：窗口越大分子分母同比例放大，率保持稳定
+        const ret13Total = 100 * scale
+        const ret25Total = 100 * scale
+        const ret13Rate = 0.6 + seededRand(seedOf(fm.id, wfp.id, key, 'ret13Rate')) * 0.3
+        const ret25Rate = 0.4 + seededRand(seedOf(fm.id, wfp.id, key, 'ret25Rate')) * 0.4
         rows.push({
           fmId: fm.id,
           wfpId: wfp.id,
-          month,
+          timeFilter: tf,
+          months,
           rrTotal,
           rrTarget,
           rrFyc: Math.floor(rrTotal * 0.45),
           rrRenewal: Math.floor(rrTotal * 0.35),
           rrFund: Math.floor(rrTotal * 0.20),
-          people70: rnd(fm.id, wfp.id, month, 'people70', 5, 15),
+          people70: rnd(fm.id, wfp.id, key, 'people70', 5 * scale, 15 * scale),
           incFyc: Math.floor(incTotal * 0.6),
           incRenewal: Math.floor(incTotal * 0.25),
           incFund: Math.floor(incTotal * 0.15),
-          ret13Renewed: rnd(fm.id, wfp.id, month, 'ret13Renewed', 60, 90),
-          ret13Total: 100,
-          ret25Renewed: rnd(fm.id, wfp.id, month, 'ret25Renewed', 40, 80),
-          ret25Total: 100,
-          ret13Count: rnd(fm.id, wfp.id, month, 'ret13Count', 20, 80),
-          ret25Count: rnd(fm.id, wfp.id, month, 'ret25Count', 10, 40),
-          calls: rnd(fm.id, wfp.id, month, 'calls', 100, 300),
-          callsLong: rnd(fm.id, wfp.id, month, 'callsLong', 40, 140),
-          meetings: rnd(fm.id, wfp.id, month, 'meetings', 10, 40),
-          newList: rnd(fm.id, wfp.id, month, 'newList', 10, 30),
-          fundContacts: rnd(fm.id, wfp.id, month, 'fundContacts', 20, 70),
-          fundMeetings: rnd(fm.id, wfp.id, month, 'fundMeetings', 5, 15),
-          wechatAdd: rnd(fm.id, wfp.id, month, 'wechatAdd', 20, 60),
-          wechatInt: rnd(fm.id, wfp.id, month, 'wechatInt', 30, 90),
-          newClients: rnd(fm.id, wfp.id, month, 'newClients', 3, 12),
-          newAUM: rnd(fm.id, wfp.id, month, 'newAUM', 30000, 150000),
-          simplePolicies: rnd(fm.id, wfp.id, month, 'simplePolicies', 5, 18),
-          complexPolicies: rnd(fm.id, wfp.id, month, 'complexPolicies', 2, 8),
-          newEvents: rnd(fm.id, wfp.id, month, 'newEvents', 2, 8),
-          newSelf: rnd(fm.id, wfp.id, month, 'newSelf', 3, 12),
-          newContacted: rnd(fm.id, wfp.id, month, 'newContacted', 40, 90),
-          newMeet: rnd(fm.id, wfp.id, month, 'newMeet', 20, 70),
-          newTotal: rnd(fm.id, wfp.id, month, 'newTotal', 8, 20),
-          oldTotal: rnd(fm.id, wfp.id, month, 'oldTotal', 100, 300),
-          oldCallList: rnd(fm.id, wfp.id, month, 'oldCallList', 40, 140),
-          oldContacted: rnd(fm.id, wfp.id, month, 'oldContacted', 40, 90),
-          oldMeet: rnd(fm.id, wfp.id, month, 'oldMeet', 20, 70),
-          policyActive: rnd(fm.id, wfp.id, month, 'policyActive', 80, 160),
-          policyActiveAum: rnd(fm.id, wfp.id, month, 'policyActiveAum', 300000, 700000),
-          policyPending: rnd(fm.id, wfp.id, month, 'policyPending', 15, 45),
-          policyPendingAum: rnd(fm.id, wfp.id, month, 'policyPendingAum', 80000, 220000),
-          policyOrphan: rnd(fm.id, wfp.id, month, 'policyOrphan', 5, 25),
-          policyOrphanAum: rnd(fm.id, wfp.id, month, 'policyOrphanAum', 40000, 140000),
-          fundHolding: rnd(fm.id, wfp.id, month, 'fundHolding', 50, 110),
-          fundHoldingAum: rnd(fm.id, wfp.id, month, 'fundHoldingAum', 1000000, 3000000),
-          fundHuikunbao: rnd(fm.id, wfp.id, month, 'fundHuikunbao', 20, 60),
-          fundHuikunbaoAum: rnd(fm.id, wfp.id, month, 'fundHuikunbaoAum', 300000, 700000),
-          fundNoIns: rnd(fm.id, wfp.id, month, 'fundNoIns', 15, 40),
-          fundNoInsAum: rnd(fm.id, wfp.id, month, 'fundNoInsAum', 150000, 450000),
+          ret13Renewed: Math.floor(ret13Total * ret13Rate),
+          ret13Total,
+          ret25Renewed: Math.floor(ret25Total * ret25Rate),
+          ret25Total,
+          ret13Count: rnd(fm.id, wfp.id, key, 'ret13Count', 20 * scale, 80 * scale),
+          ret25Count: rnd(fm.id, wfp.id, key, 'ret25Count', 10 * scale, 40 * scale),
+          calls: rnd(fm.id, wfp.id, key, 'calls', 100 * scale, 300 * scale),
+          callsLong: rnd(fm.id, wfp.id, key, 'callsLong', 40 * scale, 140 * scale),
+          meetings: rnd(fm.id, wfp.id, key, 'meetings', 10 * scale, 40 * scale),
+          newList: rnd(fm.id, wfp.id, key, 'newList', 10 * scale, 30 * scale),
+          fundContacts: rnd(fm.id, wfp.id, key, 'fundContacts', 20 * scale, 70 * scale),
+          fundMeetings: rnd(fm.id, wfp.id, key, 'fundMeetings', 5 * scale, 15 * scale),
+          wechatAdd: rnd(fm.id, wfp.id, key, 'wechatAdd', 20 * scale, 60 * scale),
+          wechatInt: rnd(fm.id, wfp.id, key, 'wechatInt', 30 * scale, 90 * scale),
+          newClients: rnd(fm.id, wfp.id, key, 'newClients', 3 * scale, 12 * scale),
+          newAUM: rnd(fm.id, wfp.id, key, 'newAUM', 30000 * scale, 150000 * scale),
+          simplePolicies: rnd(fm.id, wfp.id, key, 'simplePolicies', 5 * scale, 18 * scale),
+          complexPolicies: rnd(fm.id, wfp.id, key, 'complexPolicies', 2 * scale, 8 * scale),
+          newEvents: rnd(fm.id, wfp.id, key, 'newEvents', 2 * scale, 8 * scale),
+          newSelf: rnd(fm.id, wfp.id, key, 'newSelf', 3 * scale, 12 * scale),
+          newContacted: rnd(fm.id, wfp.id, key, 'newContacted', 40 * scale, 90 * scale),
+          newMeet: rnd(fm.id, wfp.id, key, 'newMeet', 20 * scale, 70 * scale),
+          newTotal: rnd(fm.id, wfp.id, key, 'newTotal', 8 * scale, 20 * scale),
+          oldTotal: rnd(fm.id, wfp.id, key, 'oldTotal', 100 * scale, 300 * scale),
+          oldCallList: rnd(fm.id, wfp.id, key, 'oldCallList', 40 * scale, 140 * scale),
+          oldContacted: rnd(fm.id, wfp.id, key, 'oldContacted', 40 * scale, 90 * scale),
+          oldMeet: rnd(fm.id, wfp.id, key, 'oldMeet', 20 * scale, 70 * scale),
+          policyActive: rnd(fm.id, wfp.id, key, 'policyActive', 80 * scale, 160 * scale),
+          policyActiveAum: rnd(fm.id, wfp.id, key, 'policyActiveAum', 300000 * scale, 700000 * scale),
+          policyPending: rnd(fm.id, wfp.id, key, 'policyPending', 15 * scale, 45 * scale),
+          policyPendingAum: rnd(fm.id, wfp.id, key, 'policyPendingAum', 80000 * scale, 220000 * scale),
+          policyOrphan: rnd(fm.id, wfp.id, key, 'policyOrphan', 5 * scale, 25 * scale),
+          policyOrphanAum: rnd(fm.id, wfp.id, key, 'policyOrphanAum', 40000 * scale, 140000 * scale),
+          fundHolding: rnd(fm.id, wfp.id, key, 'fundHolding', 50 * scale, 110 * scale),
+          fundHoldingAum: rnd(fm.id, wfp.id, key, 'fundHoldingAum', 1000000 * scale, 3000000 * scale),
+          fundHuikunbao: rnd(fm.id, wfp.id, key, 'fundHuikunbao', 20 * scale, 60 * scale),
+          fundHuikunbaoAum: rnd(fm.id, wfp.id, key, 'fundHuikunbaoAum', 300000 * scale, 700000 * scale),
+          fundNoIns: rnd(fm.id, wfp.id, key, 'fundNoIns', 15 * scale, 40 * scale),
+          fundNoInsAum: rnd(fm.id, wfp.id, key, 'fundNoInsAum', 150000 * scale, 450000 * scale),
         })
       }
     }
@@ -371,5 +409,5 @@ function buildMetricRows(fms: { id: string; wfps: { id: string }[] }[]): MetricR
 export function getAllData() {
   const { fms } = getFmWfpList()
   const metrics = buildMetricRows(fms)
-  return { fms, metrics, months: ALL_MONTHS, quarters: ALL_QUARTERS }
+  return { fms, metrics, months: ALL_MONTHS, quarters: ALL_QUARTERS, timeFilters: TIME_FILTERS }
 }
