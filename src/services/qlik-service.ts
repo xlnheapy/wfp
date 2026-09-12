@@ -117,14 +117,20 @@ export async function getFmWfpList() {
   const { session, app } = await connect()
   try {
     const matrix = await hyperCube(app, LIST_DIMS, [mea('Count({1} 1)', 'cnt')])
-    const rows = matrix.map((r) => {
-      const c = r.map((cell: any) => cell)
-      return {
-        fmId: txt(c[0]), fmName: txt(c[1]),
-        wfpId: txt(c[2]), wfpName: txt(c[3]),
-        timeFilter: txt(c[4]) as any,
-      }
-    })
+    // ===== 诊断日志（定位“连接成功但为空”）=====
+    // 打印行数与前 5 行的原始 qText，便于在浏览器控制台核对：
+    //   1) 字段名是否正确（若列全是 '-'，说明 FIELD_* 常量与 Qlik 实际字段不符）
+    //   2) time_filter 枚举实际取值（current_month/last_month/... 是否一致）
+    try {
+      const sample = matrix.slice(0, 5).map((r) => r.map((c: any) => c?.qText))
+      // eslint-disable-next-line no-console
+      console.log('[Qlik][getFmWfpList] rows =', matrix.length, 'sample =', sample)
+    } catch (e) { /* 忽略日志异常 */ }
+    // ===== 诊断日志结束 =====
+    const rows = matrix.map((r) => ({
+      ...parseEnumRow(r, LIST_KEYS),
+      cnt: num(r[5]),
+    }))
     return { rows }
   } finally {
     await (session as any).close?.()
