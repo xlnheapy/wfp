@@ -64,14 +64,14 @@ async function hyperCube(
   const obj = await app.createSessionObject({
     qInfo: { qType: 'custom-hypercube' },
     qHyperCubeDef: {
-      qDimensions: dims.map((d) => ({
-        qDef: { qFieldDefs: [d.field] },
-        qNullSuppression: true,
-      })),
-      qMeasures: measures.map((m) => ({
-        qDef: { qDef: m.expr, qLabel: m.label },
-      })),
-      qInitialDataFetch: [{ qLeft: 0, qTop: 0, qWidth: dims.length + measures.length, qHeight: 10000 }],
+      // 维度：与可用的 query 方法保持一致，使用最精简结构
+      qDimensions: dims.map((d) => ({ qDef: { qFieldDefs: [d.field] } })),
+      // 度量
+      qMeasures: measures.map((m) => ({ qDef: { qDef: m.expr, qLabel: m.label } })),
+      // 必须显式设置初始数据抓取窗口，否则部分环境取不到数据页
+      qInitialDataFetch: [
+        { qTop: 0, qLeft: 0, qHeight: 1000, qWidth: dims.length + measures.length },
+      ],
     },
   })
   const layout = await obj.getLayout()
