@@ -13,12 +13,12 @@ type Params = { fm_id?: string; wfp_id?: string; time_filter?: string }
 
 // ---------- 各模块行缓存 ----------
 let fmWfpRows: FmWfpRow[] = []
-let metricRows: Record<string, MetricRow[]> = {} // 各指标/汇总模块共用结构
+let metricRows: Record<string, Record<string, any>[]> = {} // 各指标/汇总模块共用结构（各接口仅含自身字段）
 let rrTrendRows: TrendRow[] = []
 let incomeTrendRows: TrendRow[] = []
 
 export function setFmWfpRows(rows: FmWfpRow[]): void { fmWfpRows = rows }
-export function setModuleRows(key: string, rows: MetricRow[]): void { metricRows[key] = rows }
+export function setModuleRows(key: string, rows: Record<string, any>[]): void { metricRows[key] = rows }
 export function setRrTrendRows(rows: TrendRow[]): void { rrTrendRows = rows }
 export function setIncomeTrendRows(rows: TrendRow[]): void { incomeTrendRows = rows }
 
@@ -35,7 +35,7 @@ function normTime(tf?: string): TimeFilterKey {
 }
 
 /** 指标行：按 FM / WFP / 时间区间 三个枚举字段等值匹配 */
-function filterRows(key: string, params: Params): MetricRow[] {
+function filterRows(key: string, params: Params): Record<string, any>[] {
   const rows = metricRows[key] || []
   const tf = normTime(params.time_filter)
   return rows.filter((r) => {
@@ -56,7 +56,7 @@ function filterTrend(rows: TrendRow[], params: Params): TrendRow[] {
 }
 
 // ---------- 工具 ----------
-function sum(rows: MetricRow[], key: keyof MetricRow): number {
+function sum(rows: Record<string, any>[], key: string): number {
   return rows.reduce((acc, r) => acc + (Number(r[key]) || 0), 0)
 }
 function rateNum(num: number, den: number): number {

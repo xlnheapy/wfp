@@ -181,6 +181,26 @@ export interface TrendRow {
   months: TrendMonth[]
 }
 
+// 二维：过滤字段（所有指标接口均含） + 各模块自有字段
+const D = ['fmId', 'wfpId', 'timeFilter'] as const
+function proj(r: MetricRow, fields: (keyof MetricRow)[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const k of D) out[k] = r[k]
+  for (const f of fields) out[f] = r[f]
+  return out
+}
+const RR_F = ['rrTotal', 'rrTarget', 'rrFyc', 'rrRenewal', 'rrFund', 'people70']
+const INC_F = ['incFyc', 'incRenewal', 'incFund']
+const RET_F = ['ret13Renewed', 'ret13Total', 'ret13Count', 'ret25Renewed', 'ret25Total', 'ret25Count']
+const ACT_F = ['calls', 'callsLong', 'meetings', 'newList', 'fundContacts', 'fundMeetings',
+  'wechatAdd', 'wechatInt', 'newClients', 'newAUM', 'simplePolicies', 'complexPolicies']
+const NEW_F = ['newEvents', 'newSelf', 'newContacted', 'newMeet', 'newTotal']
+const OLD_F = ['oldTotal', 'oldCallList', 'oldContacted', 'oldMeet']
+const POL_F = ['policyActive', 'policyActiveAum', 'policyPending', 'policyPendingAum',
+  'policyOrphan', 'policyOrphanAum']
+const FND_F = ['fundHolding', 'fundHoldingAum', 'fundHuikunbao', 'fundHuikunbaoAum',
+  'fundNoIns', 'fundNoInsAum']
+
 // ============================================================
 // 14 个独立接口：每个返回带 fm/wfp/时间区间 维度的全量数据（不筛选）
 // ============================================================
@@ -199,18 +219,18 @@ export function getFmWfpList(): { rows: FmWfpRow[] } {
 }
 
 // 2. RR 指标
-export function getRrMetrics(): { rows: MetricRow[] } {
-  return { rows: allRows().map((r) => ({ ...r })) }
+export function getRrMetrics(): { rows: Record<string, unknown>[] } {
+  return { rows: allRows().map((r) => proj(r, RR_F)) }
 }
 
 // 3. 收入指标
-export function getIncomeMetrics(): { rows: MetricRow[] } {
-  return { rows: allRows().map((r) => ({ ...r })) }
+export function getIncomeMetrics(): { rows: Record<string, unknown>[] } {
+  return { rows: allRows().map((r) => proj(r, INC_F)) }
 }
 
 // 4. 续保率指标
-export function getRetentionMetrics(): { rows: MetricRow[] } {
-  return { rows: allRows().map((r) => ({ ...r })) }
+export function getRetentionMetrics(): { rows: Record<string, unknown>[] } {
+  return { rows: allRows().map((r) => proj(r, RET_F)) }
 }
 
 // 5. RR 指标趋势（按 fm/wfp，含月份序列）
@@ -232,41 +252,41 @@ export function getIncomeTrend(): { rows: TrendRow[] } {
 }
 
 // 7. 活动跟踪
-export function getActivity(): { rows: MetricRow[] } {
-  return { rows: allRows().map((r) => ({ ...r })) }
+export function getActivity(): { rows: Record<string, unknown>[] } {
+  return { rows: allRows().map((r) => proj(r, ACT_F)) }
 }
 
 // 8. 新客运营
-export function getNewCustomer(): { rows: MetricRow[] } {
-  return { rows: allRows().map((r) => ({ ...r })) }
+export function getNewCustomer(): { rows: Record<string, unknown>[] } {
+  return { rows: allRows().map((r) => proj(r, NEW_F)) }
 }
 
 // 9. 老客运营汇总
-export function getOldCustomerSummary(): { rows: MetricRow[] } {
-  return { rows: allRows().map((r) => ({ ...r })) }
+export function getOldCustomerSummary(): { rows: Record<string, unknown>[] } {
+  return { rows: allRows().map((r) => proj(r, OLD_F)) }
 }
 
 // 10. 老客运营列表（汇总行即可，前端按过滤聚合后分组；这里返回带维度汇总行）
-export function getOldCustomerList(): { rows: MetricRow[] } {
-  return { rows: allRows().map((r) => ({ ...r })) }
+export function getOldCustomerList(): { rows: Record<string, unknown>[] } {
+  return { rows: allRows().map((r) => proj(r, OLD_F)) }
 }
 
 // 11. 保单跟踪汇总
-export function getPolicySummary(): { rows: MetricRow[] } {
-  return { rows: allRows().map((r) => ({ ...r })) }
+export function getPolicySummary(): { rows: Record<string, unknown>[] } {
+  return { rows: allRows().map((r) => proj(r, POL_F)) }
 }
 
 // 12. 保单跟踪列表
-export function getPolicyList(): { rows: MetricRow[] } {
-  return { rows: allRows().map((r) => ({ ...r })) }
+export function getPolicyList(): { rows: Record<string, unknown>[] } {
+  return { rows: allRows().map((r) => proj(r, POL_F)) }
 }
 
 // 13. 基金跟踪汇总
-export function getFundSummary(): { rows: MetricRow[] } {
-  return { rows: allRows().map((r) => ({ ...r })) }
+export function getFundSummary(): { rows: Record<string, unknown>[] } {
+  return { rows: allRows().map((r) => proj(r, FND_F)) }
 }
 
 // 14. 基金跟踪列表
-export function getFundList(): { rows: MetricRow[] } {
-  return { rows: allRows().map((r) => ({ ...r })) }
+export function getFundList(): { rows: Record<string, unknown>[] } {
+  return { rows: allRows().map((r) => proj(r, FND_F)) }
 }
