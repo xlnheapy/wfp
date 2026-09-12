@@ -67,19 +67,23 @@ function pct(a: number, b: number): string {
 }
 
 // ========== 1. FM/WFP 列表（按时间区间过滤）==========
-export function getFmWfpList(params?: Params): { fms: { id: string; name: string; wfps: { id: string; name: string }[] }[] } {
+export function getFmWfpList(params?: Params): { rows: FmWfpRow[] } {
   const tf = normTime(params?.time_filter)
+  const rows = fmWfpRows.filter((r) => r.time_filter === tf)
+  return { rows }
+}
+
+/** 将第一接口返回的行数组聚合成前端下拉所需的树形结构 */
+export function buildFmWfpTree(rows: FmWfpRow[]): { id: string; name: string; wfps: { id: string; name: string }[] }[] {
   const map = new Map<string, { name: string; wfps: Map<string, string> }>()
-  for (const r of fmWfpRows) {
-    if (r.time_filter !== tf) continue
+  for (const r of rows) {
     if (!map.has(r.fm_id)) map.set(r.fm_id, { name: r.fmName, wfps: new Map() })
     map.get(r.fm_id)!.wfps.set(r.staff_id, r.wfpName)
   }
-  const fms = Array.from(map.entries()).map(([id, v]) => ({
+  return Array.from(map.entries()).map(([id, v]) => ({
     id, name: v.name,
     wfps: Array.from(v.wfps.entries()).map(([wid, wname]) => ({ id: wid, name: wname })),
   }))
-  return { fms }
 }
 
 // ========== 2. RR 指标 ==========

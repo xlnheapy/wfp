@@ -17,6 +17,7 @@ import {
   fetchFundSummary,
   fetchFundList
 } from '@/services/api'
+import { buildFmWfpTree } from '@/services/dataset'
 
 // FM/WFP 列表类型
 interface FmItem {
@@ -187,7 +188,8 @@ export default function App() {
   // 首次打开：并行拉取 14 个独立接口（均返回带 fm/wfp/时间区间 维度的全量数据）并缓存；
   // 列表按当前时间区间过滤；之后切换 FM/WFP/时间区间全部在前端内存过滤，不再请求接口。
   useEffect(() => {
-    fetchFmWfpList({ time_filter: currentTimeFilter }).then(({ fms }) => {
+    fetchFmWfpList({ time_filter: currentTimeFilter }).then(({ rows }) => {
+      const fms = buildFmWfpTree(rows)
       setFmList(fms)
       if (fms.length > 0) {
         const firstWfp = fms[0].wfps?.[0]?.id || null
@@ -222,7 +224,8 @@ export default function App() {
   const handleTimeFilterChange = (e: React.ChangeEvent<HTMLSelectElement>)=>{
     const tf = e.target.value;
     setCurrentTimeFilter(tf);
-    fetchFmWfpList({ time_filter: tf }).then(({ fms }) => {
+    fetchFmWfpList({ time_filter: tf }).then(({ rows }) => {
+      const fms = buildFmWfpTree(rows)
       setFmList(fms)
       if (fms.length > 0) {
         const firstWfp = fms[0].wfps?.[0]?.id || null
