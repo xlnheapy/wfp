@@ -82,6 +82,59 @@ async function hyperCube(
 const dim = (field: string, label: string) => ({ field, label })
 const mea = (expr: string, label: string) => ({ expr, label })
 const num = (v: any) => { const n = Number(v?.qNum ?? v?.qText); return Number.isFinite(n) ? n : 0 }
+
+// ---------- 诊断：逐级累加维度查询 + 列出应用中疑似相关字段（仅定位“rows=0”使用）----------
+async function diagnoseFmWfp(app: any) {
+  // 1) 列出应用中所有字段名，便于核对 FIELD_* 常量是否写对
+  try {
+    const listObj = await app.createSessionObject({
+      qInfo: { qType: 'FieldList' },
+      qFieldListDef: { qShowSystem: false, qShowHidden: false, qShowSemantic: true, qShowSrcTables: true },
+    })
+    const listLayout = await listObj.getLayout()
+    const fields: string[] = (listLayout?.qFieldList?.qItems || [])
+      .map((it: any) => it?.qName)
+      .filter(Boolean)
+    // eslint-disable-next-line no-console
+    console.log('[Qlik][诊断] 应用字段总数 =', fields.length)
+    // eslint-disable-next-line no-console
+    console.log('[Qlik][诊断] 含 FM/WFP/STAFF/TIME/MONTH/DATE 的字段 =',
+      fields.filter((f) => /FM|WFP|STAFF|TIME|MONTH|DATE/i.test(f)))
+    await app.destroySessionObject(listObj.id)
+  } catch (e: any) {
+    // eslint-disable-next-line no-console
+    console.warn('[Qlik][诊断] 读取字段列表失败：', e?.message || e)
+  }
+
+  // 2) 逐级累加维度，定位是哪个字段让行数归零（关闭空值抑制，空值会显示为 '-'）
+  const steps = LIST_DIMS
+  for (let i = 1; i <= steps.length; i++) {
+    try {
+      const curDims = steps.slice(0, i)
+      const obj = await app.createSessionObject({
+        qInfo: { qType: 'custom-hypercube-diag' },
+        qHyperCubeDef: {
+          qDimensions: curDims.map((d) => ({
+            qDef: { qFieldDefs: [d.field] },
+            qNullSuppression: false,
+            qIncludeNullValues: true,
+          })),
+          qMeasures: [{ qDef: { qDef: 'Count({1} 1)', qLabel: 'cnt' } }],
+          qInitialDataFetch: [{ qLeft: 0, qTop: 0, qWidth: curDims.length + 1, qHeight: 20 }],
+        },
+      })
+      const layout = await obj.getLayout()
+      const matrix = layout?.qHyperCube?.qDataPages?.[0]?.qMatrix || []
+      const sample = matrix.slice(0, 5).map((r: any[]) => r.map((c) => c?.qText))
+      // eslint-disable-next-line no-console
+      console.log(`[Qlik][诊断] 维度${i} [${curDims.map((d) => d.field).join(', ')}] 行数=${matrix.length} 样例=`, sample)
+      await app.destroySessionObject(obj.id)
+    } catch (e: any) {
+      // eslint-disable-next-line no-console
+      console.warn(`[Qlik][诊断] 维度${i} [${steps.slice(0, i).map((d) => d.field).join(', ')}] 查询报错：`, e?.message || e)
+    }
+  }
+}
 const txt = (v: any) => (v?.qText != null ? String(v.qText) : '')
 
 // 三个枚举维度
@@ -125,6 +178,12 @@ export async function getFmWfpList() {
       const sample = matrix.slice(0, 5).map((r) => r.map((c: any) => c?.qText))
       // eslint-disable-next-line no-console
       console.log('[Qlik][getFmWfpList] rows =', matrix.length, 'sample =', sample)
+      // rows=0 时自动逐级诊断：列出应用字段 + 逐维度定位是哪个字段导致空
+      if (matrix.length === 0) {
+        // eslint-disable-next-line no-console
+        console.warn('[Qlik][getFmWfpList] rows=0，开始逐级诊断……')
+        await diagnoseFmWfp(app)
+      }
     } catch (e) { /* 忽略日志异常 */ }
     // ===== 诊断日志结束 =====
     const rows = matrix.map((r) => ({
