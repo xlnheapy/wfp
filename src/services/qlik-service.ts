@@ -87,19 +87,18 @@ const txt = (v: any) => (v?.qText != null ? String(v.qText) : '')
 // 三个枚举维度
 // FM/WFP 列表专用维度（含名称）
 const LIST_DIMS = [
-  dim(FIELD_FM_ID, 'fmId'), dim(FIELD_FM_NAME, 'fmName'),
-  dim(FIELD_WFP_ID, 'wfpId'), dim(FIELD_WFP_NAME, 'wfpName'),
-  dim(FIELD_TIME_FILTER, 'timeFilter'),
+  dim(FIELD_FM_ID, 'fm_id'), dim(FIELD_FM_NAME, 'fmName'),
+  dim(FIELD_WFP_ID, 'staff_id'), dim(FIELD_WFP_NAME, 'wfpName'),
+  dim(FIELD_TIME_FILTER, 'time_filter'),
 ]
-// 普通指标/汇总维度（仅维度键，不含名称）
 const ENUM_DIMS = [
-  dim(FIELD_FM_ID, 'fmId'),
-  dim(FIELD_WFP_ID, 'wfpId'),
-  dim(FIELD_TIME_FILTER, 'timeFilter'),
+  dim(FIELD_FM_ID, 'fm_id'),
+  dim(FIELD_WFP_ID, 'staff_id'),
+  dim(FIELD_TIME_FILTER, 'time_filter'),
 ]
 // 从矩阵行解析维度公共字段：dims 决定列与返回键的对应
-const ENUM_KEYS: Record<number, string> = { 0: 'fmId', 1: 'wfpId', 2: 'timeFilter' }
-const LIST_KEYS: Record<number, string> = { 0: 'fmId', 1: 'fmName', 2: 'wfpId', 3: 'wfpName', 4: 'timeFilter' }
+const ENUM_KEYS: Record<number, string> = { 0: 'fm_id', 1: 'staff_id', 2: 'time_filter' }
+const LIST_KEYS: Record<number, string> = { 0: 'fm_id', 1: 'fmName', 2: 'staff_id', 3: 'wfpName', 4: 'time_filter' }
 function parseEnumRow(c: any[], keys = ENUM_KEYS) {
   const out: Record<string, any> = {}
   Object.keys(keys).forEach((k) => {
@@ -185,16 +184,16 @@ export async function getRetentionMetrics() {
 // 趋势查询：维度 FM/WFP + MONTH，按 FM/WFP 归组成 12 个月序列
 async function queryTrend(app: any, measures: { expr: string; label: string }[], monthKeyPrefix: 'rr' | 'inc') {
   const dims = [
-    dim(FIELD_FM_ID, 'fmId'), dim(FIELD_WFP_ID, 'wfpId'), dim(FIELD_WFP_NAME, 'wfpName'),
+    dim(FIELD_FM_ID, 'fm_id'), dim(FIELD_WFP_ID, 'staff_id'), dim(FIELD_WFP_NAME, 'wfpName'),
     dim(FIELD_MONTH, 'month'),
   ]
   const matrix = await hyperCube(app, dims, measures)
-  // 归组：key = fm|wfp
-  const group = new Map<string, { fmId: string; wfpId: string; wfpName: string; months: any[] }>()
+  // 归组：key = fm|staff
+  const group = new Map<string, { fm_id: string; staff_id: string; wfpName: string; months: any[] }>()
   for (const r of matrix) {
-    const fmId = txt(r[0]), wfpId = txt(r[1]), wfpName = txt(r[2]), month = txt(r[3])
-    const key = `${fmId}|${wfpId}`
-    if (!group.has(key)) group.set(key, { fmId, wfpId, wfpName, months: [] })
+    const fm_id = txt(r[0]), staff_id = txt(r[1]), wfpName = txt(r[2]), month = txt(r[3])
+    const key = `${fm_id}|${staff_id}`
+    if (!group.has(key)) group.set(key, { fm_id, staff_id, wfpName, months: [] })
     const g = group.get(key)!
     const base: any = { month, monthLabel: month }
     if (monthKeyPrefix === 'rr') {

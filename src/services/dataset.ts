@@ -9,7 +9,7 @@
  */
 import type { MetricRow, FmWfpRow, TrendRow, TimeFilterKey } from './mock-data'
 
-type Params = { fm_id?: string; wfp_id?: string; time_filter?: string }
+type Params = { fm_id?: string; staff_id?: string; time_filter?: string }
 
 // ---------- 各模块行缓存 ----------
 let fmWfpRows: FmWfpRow[] = []
@@ -39,9 +39,9 @@ function filterRows(key: string, params: Params): Record<string, any>[] {
   const rows = metricRows[key] || []
   const tf = normTime(params.time_filter)
   return rows.filter((r) => {
-    if (params.fm_id && params.fm_id !== 'ALL' && r.fmId !== params.fm_id) return false
-    if (params.wfp_id && params.wfp_id !== 'ALL' && r.wfpId !== params.wfp_id) return false
-    if (r.timeFilter !== tf) return false
+    if (params.fm_id && params.fm_id !== 'ALL' && r.fm_id !== params.fm_id) return false
+    if (params.staff_id && params.staff_id !== 'ALL' && r.staff_id !== params.staff_id) return false
+    if (r.time_filter !== tf) return false
     return true
   })
 }
@@ -49,8 +49,8 @@ function filterRows(key: string, params: Params): Record<string, any>[] {
 /** 趋势行：只按 FM/WFP 过滤（趋势按月份展开，与时间区间枚举无关） */
 function filterTrend(rows: TrendRow[], params: Params): TrendRow[] {
   return rows.filter((r) => {
-    if (params.fm_id && params.fm_id !== 'ALL' && r.fmId !== params.fm_id) return false
-    if (params.wfp_id && params.wfp_id !== 'ALL' && r.wfpId !== params.wfp_id) return false
+    if (params.fm_id && params.fm_id !== 'ALL' && r.fm_id !== params.fm_id) return false
+    if (params.staff_id && params.staff_id !== 'ALL' && r.staff_id !== params.staff_id) return false
     return true
   })
 }
@@ -71,9 +71,9 @@ export function getFmWfpList(params?: Params): { fms: { id: string; name: string
   const tf = normTime(params?.time_filter)
   const map = new Map<string, { name: string; wfps: Map<string, string> }>()
   for (const r of fmWfpRows) {
-    if (r.timeFilter !== tf) continue
-    if (!map.has(r.fmId)) map.set(r.fmId, { name: r.fmName, wfps: new Map() })
-    map.get(r.fmId)!.wfps.set(r.wfpId, r.wfpName)
+    if (r.time_filter !== tf) continue
+    if (!map.has(r.fm_id)) map.set(r.fm_id, { name: r.fmName, wfps: new Map() })
+    map.get(r.fm_id)!.wfps.set(r.staff_id, r.wfpName)
   }
   const fms = Array.from(map.entries()).map(([id, v]) => ({
     id, name: v.name,

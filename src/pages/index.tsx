@@ -143,7 +143,7 @@ export default function App() {
   // 构建查询参数
   const getQueryParams = useCallback(() => ({
     fm_id: currentSelection.fmId,
-    wfp_id: currentSelection.wfpId || undefined,
+    staff_id: currentSelection.wfpId || undefined,
     time_filter: currentTimeFilter
   }), [currentSelection.fmId, currentSelection.wfpId, currentTimeFilter])
 

@@ -46,9 +46,9 @@ export interface TrendMonth {
 
 // ---------- 全量指标行（FM × WFP × 时间区间）----------
 export interface MetricRow {
-  fmId: string; fmName: string
-  wfpId: string; wfpName: string
-  timeFilter: TimeFilterKey
+  fm_id: string; fmName: string
+  staff_id: string; wfpName: string
+  time_filter: TimeFilterKey
 
   // RR 指标
   rrTotal: number; rrTarget: number; rrFyc: number; rrRenewal: number; rrFund: number; people70: number
@@ -129,7 +129,7 @@ function buildAllRows(): MetricRow[] {
         const fNoIns = Math.round(rate(8, 25) * f)
 
         rows.push({
-          fmId: fm.id, fmName: fm.name, wfpId: wfp.id, wfpName: wfp.name, timeFilter: tf,
+          fm_id: fm.id, fmName: fm.name, staff_id: wfp.id, wfpName: wfp.name, time_filter: tf,
           rrTotal: Math.round(total * f),
           rrTarget: Math.round(total * 620 * f),
           rrFyc: Math.round(fyc * f), rrRenewal: Math.round(renewal * f), rrFund: Math.round(fund * f),
@@ -170,22 +170,27 @@ function allRows(): MetricRow[] {
 
 // FM/WFP 列表行（带时间区间维度）
 export interface FmWfpRow {
-  fmId: string; fmName: string
-  wfpId: string; wfpName: string
-  timeFilter: TimeFilterKey
+  fm_id: string; fmName: string
+  staff_id: string; wfpName: string
+  time_filter: TimeFilterKey
 }
 
 // 趋势行（按 fm/wfp，含 12 个月）
 export interface TrendRow {
-  fmId: string; wfpId: string; wfpName: string
+  fm_id: string; staff_id: string; wfpName: string
   months: TrendMonth[]
 }
 
 // 二维：过滤字段（所有指标接口均含） + 各模块自有字段
-const D = ['fmId', 'wfpId', 'timeFilter'] as const
+// 注意：维度字段在接口中的命名固定为 fm_id / staff_id / time_filter（与 wfp_id 一致）
+const D = [
+  ['fm_id', 'fm_id'],
+  ['staff_id', 'staff_id'],
+  ['time_filter', 'time_filter'],
+] as const
 function proj(r: MetricRow, fields: (keyof MetricRow)[]): Record<string, unknown> {
   const out: Record<string, unknown> = {}
-  for (const k of D) out[k] = r[k]
+  for (const [outKey, rKey] of D) out[outKey] = r[rKey]
   for (const f of fields) out[f] = r[f]
   return out
 }
@@ -211,7 +216,7 @@ export function getFmWfpList(): { rows: FmWfpRow[] } {
   for (const fm of FMS) {
     for (const wfp of fm.wfps) {
       for (const tf of TIME_FILTERS) {
-        rows.push({ fmId: fm.id, fmName: fm.name, wfpId: wfp.id, wfpName: wfp.name, timeFilter: tf })
+        rows.push({ fm_id: fm.id, fmName: fm.name, staff_id: wfp.id, wfpName: wfp.name, time_filter: tf })
       }
     }
   }
@@ -238,10 +243,10 @@ export function getRrTrend(): { rows: TrendRow[] } {
   const seen = new Set<string>()
   const rows: TrendRow[] = []
   for (const r of allRows()) {
-    const k = `${r.fmId}|${r.wfpId}`
+    const k = `${r.fm_id}|${r.staff_id}`
     if (seen.has(k)) continue
     seen.add(k)
-    rows.push({ fmId: r.fmId, wfpId: r.wfpId, wfpName: r.wfpName, months: r.months })
+    rows.push({ fm_id: r.fm_id, staff_id: r.staff_id, wfpName: r.wfpName, months: r.months })
   }
   return { rows }
 }
