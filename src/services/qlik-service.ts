@@ -245,9 +245,10 @@ export async function getFmWfpList() {
 export async function getRrMetrics() {
   const { session, app } = await connect()
   try {
+    // 不做 Sum 聚合：每条维度行直接返回对应字段的实际值
     const measures = [
-      mea(M.rrTotal, 'rrTotal'), mea(M.rrTarget, 'rrTarget'), mea(M.rrFyc, 'rrFyc'),
-      mea(M.rrRenewal, 'rrRenewal'), mea(M.rrFund, 'rrFund'), mea(M.people70, 'people70'),
+      mea('RR_TOTAL', 'rrTotal'), mea('RR_TARGET', 'rrTarget'), mea('RR_FYC', 'rrFyc'),
+      mea('RR_RENEWAL', 'rrRenewal'), mea('RR_FUND', 'rrFund'), mea('PEOPLE_70', 'people70'),
     ]
     const matrix = await hyperCube(app, ENUM_DIMS, measures)
     const rows = matrix.map((r) => ({
