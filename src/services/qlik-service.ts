@@ -118,7 +118,7 @@ export async function getFmWfpList() {
     })
     return { rows }
   } finally {
-    await session.close()
+    await (session as any).close?.()
   }
 }
 
@@ -137,7 +137,7 @@ export async function getRrMetrics() {
       rrRenewal: num(r[8]), rrFund: num(r[9]), people70: num(r[10]),
     }))
     return { rows }
-  } finally { await session.close() }
+  } finally { await (session as any).close?.() }
 }
 
 // 3. 收入指标
@@ -151,7 +151,7 @@ export async function getIncomeMetrics() {
       incFyc: num(r[5]), incRenewal: num(r[6]), incFund: num(r[7]),
     }))
     return { rows }
-  } finally { await session.close() }
+  } finally { await (session as any).close?.() }
 }
 
 // 4. 续保率指标
@@ -169,7 +169,7 @@ export async function getRetentionMetrics() {
       ret25Renewed: num(r[8]), ret25Total: num(r[9]), ret25Count: num(r[10]),
     }))
     return { rows }
-  } finally { await session.close() }
+  } finally { await (session as any).close?.() }
 }
 
 // 趋势查询：维度 FM/WFP + MONTH，按 FM/WFP 归组成 12 个月序列
@@ -209,7 +209,7 @@ export async function getRrTrend() {
     ]
     const rows = await queryTrend(app, measures, 'rr')
     return { rows }
-  } finally { await session.close() }
+  } finally { await (session as any).close?.() }
 }
 
 // 6. 收入指标趋势
@@ -222,7 +222,7 @@ export async function getIncomeTrend() {
     ]
     const rows = await queryTrend(app, measures, 'inc')
     return { rows }
-  } finally { await session.close() }
+  } finally { await (session as any).close?.() }
 }
 
 // 7. 活动跟踪
@@ -244,7 +244,7 @@ export async function getActivity() {
       newClients: num(r[13]), newAUM: num(r[14]), simplePolicies: num(r[15]), complexPolicies: num(r[16]),
     }))
     return { rows }
-  } finally { await session.close() }
+  } finally { await (session as any).close?.() }
 }
 
 // 8. 新客运营
@@ -262,7 +262,7 @@ export async function getNewCustomer() {
       newMeet: num(r[8]), newTotal: num(r[9]),
     }))
     return { rows }
-  } finally { await session.close() }
+  } finally { await (session as any).close?.() }
 }
 
 // 9. 老客运营汇总
@@ -279,7 +279,7 @@ export async function getOldCustomerSummary() {
       oldTotal: num(r[5]), oldCallList: num(r[6]), oldContacted: num(r[7]), oldMeet: num(r[8]),
     }))
     return { rows }
-  } finally { await session.close() }
+  } finally { await (session as any).close?.() }
 }
 
 // 10. 老客运营列表（前端按汇总行聚合分组，这里返回与汇总一致的带维度行）
@@ -304,7 +304,7 @@ export async function getPolicySummary() {
       policyOrphan: num(r[9]), policyOrphanAum: num(r[10]),
     }))
     return { rows }
-  } finally { await session.close() }
+  } finally { await (session as any).close?.() }
 }
 
 // 12. 保单跟踪列表（前端按汇总行聚合分组）
@@ -329,7 +329,7 @@ export async function getFundSummary() {
       fundNoIns: num(r[9]), fundNoInsAum: num(r[10]),
     }))
     return { rows }
-  } finally { await session.close() }
+  } finally { await (session as any).close?.() }
 }
 
 // 14. 基金跟踪列表（前端按汇总行聚合分组）
