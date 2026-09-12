@@ -85,18 +85,28 @@ const num = (v: any) => { const n = Number(v?.qNum ?? v?.qText); return Number.i
 const txt = (v: any) => (v?.qText != null ? String(v.qText) : '')
 
 // 三个枚举维度
-const ENUM_DIMS = [
+// FM/WFP 列表专用维度（含名称）
+const LIST_DIMS = [
   dim(FIELD_FM_ID, 'fmId'), dim(FIELD_FM_NAME, 'fmName'),
   dim(FIELD_WFP_ID, 'wfpId'), dim(FIELD_WFP_NAME, 'wfpName'),
   dim(FIELD_TIME_FILTER, 'timeFilter'),
 ]
-// 从矩阵行解析出维度公共字段
-function parseEnumRow(c: any[]) {
-  return {
-    fmId: txt(c[0]), fmName: txt(c[1]),
-    wfpId: txt(c[2]), wfpName: txt(c[3]),
-    timeFilter: txt(c[4]) as any,
-  }
+// 普通指标/汇总维度（仅维度键，不含名称）
+const ENUM_DIMS = [
+  dim(FIELD_FM_ID, 'fmId'),
+  dim(FIELD_WFP_ID, 'wfpId'),
+  dim(FIELD_TIME_FILTER, 'timeFilter'),
+]
+// 从矩阵行解析维度公共字段：dims 决定列与返回键的对应
+const ENUM_KEYS: Record<number, string> = { 0: 'fmId', 1: 'wfpId', 2: 'timeFilter' }
+const LIST_KEYS: Record<number, string> = { 0: 'fmId', 1: 'fmName', 2: 'wfpId', 3: 'wfpName', 4: 'timeFilter' }
+function parseEnumRow(c: any[], keys = ENUM_KEYS) {
+  const out: Record<string, any> = {}
+  Object.keys(keys).forEach((k) => {
+    const idx = Number(k)
+    out[keys[idx]] = txt(c[idx])
+  })
+  return out
 }
 
 // ============================================================
@@ -107,7 +117,7 @@ function parseEnumRow(c: any[]) {
 export async function getFmWfpList() {
   const { session, app } = await connect()
   try {
-    const matrix = await hyperCube(app, ENUM_DIMS, [mea('Count({1} 1)', 'cnt')])
+    const matrix = await hyperCube(app, LIST_DIMS, [mea('Count({1} 1)', 'cnt')])
     const rows = matrix.map((r) => {
       const c = r.map((cell: any) => cell)
       return {
@@ -133,8 +143,8 @@ export async function getRrMetrics() {
     const matrix = await hyperCube(app, ENUM_DIMS, measures)
     const rows = matrix.map((r) => ({
       ...parseEnumRow(r),
-      rrTotal: num(r[5]), rrTarget: num(r[6]), rrFyc: num(r[7]),
-      rrRenewal: num(r[8]), rrFund: num(r[9]), people70: num(r[10]),
+      rrTotal: num(r[3]), rrTarget: num(r[4]), rrFyc: num(r[5]),
+      rrRenewal: num(r[6]), rrFund: num(r[7]), people70: num(r[8]),
     }))
     return { rows }
   } finally { await (session as any).close?.() }
@@ -148,7 +158,7 @@ export async function getIncomeMetrics() {
     const matrix = await hyperCube(app, ENUM_DIMS, measures)
     const rows = matrix.map((r) => ({
       ...parseEnumRow(r),
-      incFyc: num(r[5]), incRenewal: num(r[6]), incFund: num(r[7]),
+      incFyc: num(r[3]), incRenewal: num(r[4]), incFund: num(r[5]),
     }))
     return { rows }
   } finally { await (session as any).close?.() }
@@ -165,8 +175,8 @@ export async function getRetentionMetrics() {
     const matrix = await hyperCube(app, ENUM_DIMS, measures)
     const rows = matrix.map((r) => ({
       ...parseEnumRow(r),
-      ret13Renewed: num(r[5]), ret13Total: num(r[6]), ret13Count: num(r[7]),
-      ret25Renewed: num(r[8]), ret25Total: num(r[9]), ret25Count: num(r[10]),
+      ret13Renewed: num(r[3]), ret13Total: num(r[4]), ret13Count: num(r[5]),
+      ret25Renewed: num(r[6]), ret25Total: num(r[7]), ret25Count: num(r[8]),
     }))
     return { rows }
   } finally { await (session as any).close?.() }
@@ -239,9 +249,9 @@ export async function getActivity() {
     const matrix = await hyperCube(app, ENUM_DIMS, measures)
     const rows = matrix.map((r) => ({
       ...parseEnumRow(r),
-      calls: num(r[5]), callsLong: num(r[6]), meetings: num(r[7]), newList: num(r[8]),
-      fundContacts: num(r[9]), fundMeetings: num(r[10]), wechatAdd: num(r[11]), wechatInt: num(r[12]),
-      newClients: num(r[13]), newAUM: num(r[14]), simplePolicies: num(r[15]), complexPolicies: num(r[16]),
+      calls: num(r[3]), callsLong: num(r[4]), meetings: num(r[5]), newList: num(r[6]),
+      fundContacts: num(r[7]), fundMeetings: num(r[8]), wechatAdd: num(r[9]), wechatInt: num(r[10]),
+      newClients: num(r[11]), newAUM: num(r[12]), simplePolicies: num(r[13]), complexPolicies: num(r[14]),
     }))
     return { rows }
   } finally { await (session as any).close?.() }
@@ -258,8 +268,8 @@ export async function getNewCustomer() {
     const matrix = await hyperCube(app, ENUM_DIMS, measures)
     const rows = matrix.map((r) => ({
       ...parseEnumRow(r),
-      newEvents: num(r[5]), newSelf: num(r[6]), newContacted: num(r[7]),
-      newMeet: num(r[8]), newTotal: num(r[9]),
+      newEvents: num(r[3]), newSelf: num(r[4]), newContacted: num(r[5]),
+      newMeet: num(r[6]), newTotal: num(r[7]),
     }))
     return { rows }
   } finally { await (session as any).close?.() }
@@ -276,7 +286,7 @@ export async function getOldCustomerSummary() {
     const matrix = await hyperCube(app, ENUM_DIMS, measures)
     const rows = matrix.map((r) => ({
       ...parseEnumRow(r),
-      oldTotal: num(r[5]), oldCallList: num(r[6]), oldContacted: num(r[7]), oldMeet: num(r[8]),
+      oldTotal: num(r[3]), oldCallList: num(r[4]), oldContacted: num(r[5]), oldMeet: num(r[6]),
     }))
     return { rows }
   } finally { await (session as any).close?.() }
@@ -299,9 +309,9 @@ export async function getPolicySummary() {
     const matrix = await hyperCube(app, ENUM_DIMS, measures)
     const rows = matrix.map((r) => ({
       ...parseEnumRow(r),
-      policyActive: num(r[5]), policyActiveAum: num(r[6]),
-      policyPending: num(r[7]), policyPendingAum: num(r[8]),
-      policyOrphan: num(r[9]), policyOrphanAum: num(r[10]),
+      policyActive: num(r[3]), policyActiveAum: num(r[4]),
+      policyPending: num(r[5]), policyPendingAum: num(r[6]),
+      policyOrphan: num(r[7]), policyOrphanAum: num(r[8]),
     }))
     return { rows }
   } finally { await (session as any).close?.() }
@@ -324,9 +334,9 @@ export async function getFundSummary() {
     const matrix = await hyperCube(app, ENUM_DIMS, measures)
     const rows = matrix.map((r) => ({
       ...parseEnumRow(r),
-      fundHolding: num(r[5]), fundHoldingAum: num(r[6]),
-      fundHuikunbao: num(r[7]), fundHuikunbaoAum: num(r[8]),
-      fundNoIns: num(r[9]), fundNoInsAum: num(r[10]),
+      fundHolding: num(r[3]), fundHoldingAum: num(r[4]),
+      fundHuikunbao: num(r[5]), fundHuikunbaoAum: num(r[6]),
+      fundNoIns: num(r[7]), fundNoInsAum: num(r[8]),
     }))
     return { rows }
   } finally { await (session as any).close?.() }
