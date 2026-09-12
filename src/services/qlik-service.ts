@@ -50,8 +50,38 @@ const M = {
 // ---------- 连接 ----------
 async function connect() {
   const session = enigma.create({ schema, url: QLIK_URL })
-  const global = await session.open()
-  const app = await global.openDoc(APP_ID)
+
+  let global: any
+  try {
+    global = await session.open()
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('[Qlik][连接] session.open() 失败：', e)
+    throw e
+  }
+  // eslint-disable-next-line no-console
+  console.log('[Qlik][连接] session.open() 已返回，类型 keys =', global ? Object.keys(global).slice(0, 20) : global)
+
+  // 兼容两种引擎地址形态：
+  //   - 全局引擎地址（如 wss://host/engine/...）：open() 返回 global，需 openDoc(appId) 打开指定应用
+  //   - 已指向具体应用（如 wss://host/.../app/<appId>/...）：open() 直接返回 app 对象，无 openDoc 方法
+  let app: any
+  if (global && typeof global.openDoc === 'function') {
+    try {
+      app = await global.openDoc(APP_ID)
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[Qlik][连接] global.openDoc(APP_ID) 失败：', e)
+      throw e
+    }
+  } else if (global && typeof global.createSessionObject === 'function') {
+    // open() 已直接返回 app（URL 已含 app 标识），直接使用
+    app = global
+    // eslint-disable-next-line no-console
+    console.log('[Qlik][连接] open() 已直接返回 app（URL 已指向具体应用），跳过 openDoc，appId 无需单独传入')
+  } else {
+    throw new Error(`[Qlik][连接] 无法从连接结果解析 app：open() 返回了不包含 openDoc/createSessionObject 的对象`)
+  }
   return { session, app }
 }
 
