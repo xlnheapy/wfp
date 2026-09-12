@@ -106,6 +106,21 @@ async function diagnoseFmWfp(app: any) {
     console.warn('[Qlik][诊断] 读取字段列表失败：', e?.message || e)
   }
 
+  // 1.5) 打印当前 App 的活动选择态（宿主 Qlik 页面可能已有筛选把数据过滤空）
+  try {
+    const selObj = await app.createSessionObject({ qInfo: { qType: 'CurrentSelections' }, qCurrentSelectionsDef: {} })
+    const selLayout = await selObj.getLayout()
+    const sels = (selLayout?.qSelectionObject?.qSelections || []).map((s: any) => ({
+      field: s.qField, selected: s.qSelected, count: s.qSelectedCount,
+    }))
+    // eslint-disable-next-line no-console
+    console.log('[Qlik][诊断] 当前活动选择态 =', sels.length ? sels : '（无任何选择）')
+    await app.destroySessionObject(selObj.id)
+  } catch (e: any) {
+    // eslint-disable-next-line no-console
+    console.warn('[Qlik][诊断] 读取选择态失败：', e?.message || e)
+  }
+
   // 2) 逐级累加维度，定位是哪个字段让行数归零（关闭空值抑制，空值会显示为 '-'）
   const steps = LIST_DIMS
   for (let i = 1; i <= steps.length; i++) {
@@ -115,7 +130,8 @@ async function diagnoseFmWfp(app: any) {
         qInfo: { qType: 'custom-hypercube-diag' },
         qHyperCubeDef: {
           qDimensions: curDims.map((d) => ({
-            qDef: { qFieldDefs: [d.field] },
+            // 维度表达式加 {1} 前缀：忽略所有活动选择，只看字段本身有无数据
+            qDef: { qFieldDefs: [`{1}[${d.field}]`] },
             qNullSuppression: false,
             qIncludeNullValues: true,
           })),
