@@ -204,7 +204,6 @@ export async function getFmWfpList() {
     // ===== 诊断日志结束 =====
     const rows = matrix.map((r) => ({
       ...parseEnumRow(r, LIST_KEYS),
-      cnt: num(r[5]),
     }))
     return { rows }
   } finally {
